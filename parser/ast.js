@@ -252,6 +252,14 @@ class MemberExpression extends Expression {
     }
 }
 
+class ParenthesisBlock extends Expression {
+    constructor(expression) {
+        super();
+        this.expression = expression;
+        this.type = 'ParenthesisBlock';
+    }
+}
+
 class NumberLiteralExpression extends Expression {
     /** @param {number} value */
     constructor(value) {
@@ -276,6 +284,14 @@ class IdentifierLiteralExpression extends Expression {
         super();
         this.value = value;
         this.type = 'IdentifierLiteralExpression';
+    }
+}
+
+class BooleanLiteralExpression extends Expression {
+    constructor(value) {
+        super();
+        this.value = value;
+        this.type = 'BooleanLiteralExpression';
     }
 }
 
@@ -315,10 +331,10 @@ class PointerTypeExpression extends TypeExpression {
 module.exports = {
     Program, Statement, VariableDeclarationStatement, Scope,
     FunctionDeclarationStatement, WhileStatement, BreakStatement, ReturnStatement,
-    IfStatement, StructDeclarationStatement,
+    IfStatement, StructDeclarationStatement, ParenthesisBlock,
     Expression, NumberLiteralExpression, StringLiteralExpression, IdentifierLiteralExpression,
     MemberExpression, CallExpression, UnaryExpression, CastExpression,
-    BinaryExpression, ComparisonExpression, AssignmentExpression,
+    BinaryExpression, ComparisonExpression, AssignmentExpression, BooleanLiteralExpression,
 
     TypeExpression, PointerTypeExpression
 }

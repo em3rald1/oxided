@@ -191,7 +191,8 @@ function tokenize(source) {
                     output_string += _char;
                     i++;
                 }
-                if(KEYWORDS.includes(output_string)) tokens.push(new Token('KEYWORD', output_string, line, offset));
+                if(['true', 'false'].includes(output_string)) tokens.push(new Token('BOOL', output_string, line, offset));
+                else if(KEYWORDS.includes(output_string)) tokens.push(new Token('KEYWORD', output_string, line, offset));
                 else if(IS_NUMBER.test(output_string)) tokens.push(new Token('NUMBER', output_string, line, offset));
                 else tokens.push(new Token('IDENT', output_string, line, offset));
                 break;

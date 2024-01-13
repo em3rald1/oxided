@@ -1,1 +1,1 @@
-require("./parser/parser");
+require("./typechecker/typechecker");

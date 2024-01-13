@@ -580,10 +580,21 @@ class Parser {
         switch(token.type) {
             case 'NUMBER': 
                 return Result.Ok(new AST.NumberLiteralExpression(this.eat().value));
+            case 'BOOL':
+                return Result.Ok(new AST.BooleanLiteralExpression(this.eat().value));
             case 'STRING': 
                 return Result.Ok(new AST.StringLiteralExpression(this.eat().value));
             case 'IDENT': 
                 return Result.Ok(new AST.IdentifierLiteralExpression(this.eat().value));
+            case 'LPAREN': {
+                this.eat();
+                const _expression = this.parse_expression();
+                if(_expression.is_error()) return _expression;
+                const expression = _expression.unwrap();
+                const _rparen = this.expect("RPAREN", `Expected a closing parenthesis ${this.at().line}:${this.at().offset}`);
+                if(_rparen.is_error()) return _rparen;
+                return Result.Ok(new AST.ParenthesisBlock(expression));
+            }
             default:
                 return Result.Err(`Unknown token (${token.type}) on position ${token.line}:${this.eat().offset}`);
         }
