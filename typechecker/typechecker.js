@@ -28,7 +28,6 @@ class Typechecker {
         globalScope.lifetime_name = "static";
         for(const statement of this.ast.body) {
             const _ = this.validate_statement(state, globalScope, statement).unwrap();
-            console.log("STATEMENT", _);
         }
     }
 
@@ -51,10 +50,34 @@ class Typechecker {
                 return this.validate_return_statement(state, scope, statement);
             case 'BreakStatement':
                 return Result.Ok();
+            case 'StructDeclarationStatement':
+                return this.validate_struct_declaration(state, scope, statement);
             case 'IfStatement':
                 return this.validate_if_statement(state, scope, statement);
             default: return this.validate_expression(state, scope, statement);
         }
+    }
+
+    /**
+     * 
+     * @param {State} state
+     * @param {Scope} scope
+     * @param {AST.StructDeclarationStatement} statement
+     */
+    validate_struct_declaration(state, scope, statement) {
+        const name = statement.name;
+        if(state.types.has(name)) 
+            return Result.Err(`Type ${name} already exists`);
+        const properties = [];
+        for(const property of statement.properties) {
+            const prop_name = property[1];
+            const _prop_type = this.toType(state, scope, property[0]);
+            if(_prop_type.is_error()) return _prop_type;
+            const prop_type = _prop_type.unwrap();
+            properties.push([prop_type, prop_name]);
+        }
+        state.types.set(name, new ComplexType(name, 0, null, properties));
+        return Result.Ok();
     }
 
     /**
@@ -193,14 +216,15 @@ class Typechecker {
         const _type = this.toType(state, scope, statement.variable_type);
         if(_type.is_error()) return _type;
         const type = _type.unwrap();
-    
-        const _value = this.validate_expression(state, scope, statement.value);
-        if(_value.is_error()) return _value;
-        const value = _value.unwrap();
+        
+        let value = null;
+        if(statement.value) {
+            const _value = this.validate_expression(state, scope, statement.value);
+            if(_value.is_error()) return _value;
+            value = _value.unwrap();
+        }
 
-       //  console.log(type, value.type);
-
-        if(!this.typeEq(type, value.type)) return Result.Err(`Cannot declare a variable with different type of value than declared`);
+        if(value && !this.typeEq(type, value.type)) return Result.Err(`Cannot declare a variable with different type of value than declared`);
 
         if(scope.variables.has(name))
             return Result.Err(`Variable ${name} already exists`);
@@ -221,7 +245,6 @@ class Typechecker {
             const _result = 
                 this.validate_statement(state, scope, statement);
             if(_result.is_error()) return _result;
-            console.log(`SS ${scope.lifetime_name}`, _result.unwrap());
         }
         return Result.Ok();
     }
@@ -582,11 +605,11 @@ class Typechecker {
         if(!state.types.has(typeExpression.name))
             return Result.Err(`Type ${typeExpression.name} doesn't exist`);
         const type = state.types.get(typeExpression.name);
-        const output = new Type(
+        const output = new (type instanceof ComplexType ? ComplexType : Type)(
             type.name, 
             typeExpression instanceof AST.PointerTypeExpression 
             ? typeExpression.pointers
-            : 0, typeExpression.lifetime || type.lifetime);
+            : 0, typeExpression.lifetime || type.lifetime, type.properties);
         output.pointers += type.pointers;
         return Result.Ok(output);
     }
@@ -607,13 +630,4 @@ class Typechecker {
     }
 }
 
-const tokenize = require("../lexer/lexer");
-const Parser = require("../parser/parser");
-
-const src = "fn main(): void { let x: word = 5; if(x > 1) { return; } else return; }";
-const tokens = tokenize(src);
-const parser = new Parser(tokens);
-const ast = parser.parse();
-console.log(ast);
-const typechecker = new Typechecker(ast);
-typechecker.validate();
+module.exports = Typechecker;
