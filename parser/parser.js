@@ -213,7 +213,7 @@ class Parser {
             _pos = this.at();
             const _lifetime = this.expect('IDENT', `Expected a lifetime identifier, position ${_pos.line}:${_pos.offset}`);
             if(_lifetime.is_error()) return _lifetime;
-            lifetime = _lifetime.unwrap();
+            lifetime = _lifetime.unwrap().value;
             
             _pos = this.at();
             const _gthen = this.expect('GTHEN', `Expected a closing ">" sign after lifetime specifier, position ${_pos.line}:${_pos.offset}`);

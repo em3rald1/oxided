@@ -36,6 +36,7 @@ class IfStatement extends Statement {
         this.condition = condition;
         this.body = body;
         this.else_body = else_body;
+        this.type = 'IfStatement';
     }
 }
 
@@ -157,6 +158,7 @@ class AssignmentExpression extends Expression {
         this.lhs = lhs;
         this.operator = operator;
         this.rhs = rhs;
+        this.type = 'AssignmentExpression';
     }
 }
 

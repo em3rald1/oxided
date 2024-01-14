@@ -6,10 +6,12 @@ class Scope {
      * 
      * @param {Scope | undefined} parent
      * @param {string} lifetime_name
+     * @param {string | undefined} external_lifetime
      */
-    constructor(parent, lifetime_name) {
+    constructor(parent, lifetime_name, external_lifetime) {
         this.parent = parent;
         this.lifetime_name = lifetime_name;
+        this.external_lifetime;
         /** @type {Map<string, Type>} */
         this.variables = new Map();
     }
