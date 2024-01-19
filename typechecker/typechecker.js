@@ -8,6 +8,15 @@ const lodash = require("lodash");
 
 const UNKNOWN_AMOUNT_OF_PARAMETERS = -1;
 
+/**
+ * Class representing a typechecker
+ * @example
+ * // ...
+ * const ast = parser.parse(); // Program { body: [ ... ] }
+ * const typechecker = new Typechecker(ast);
+ * typechecker.validate(); // Throws an error if there is a problem with the code
+ * @see {@link https://en.wikipedia.org/wiki/Type_system}
+ */
 class Typechecker {
     /**
      * 
@@ -17,6 +26,11 @@ class Typechecker {
         this.ast = ast;
     }
 
+    /**
+     * Function validating the code. If validation fails, the error is thrown
+     * @returns {undefined}
+     * @throws 
+     */
     validate() {
         const state = new State();
         state.type_create("bool", new Type("bool", 0)).unwrap();

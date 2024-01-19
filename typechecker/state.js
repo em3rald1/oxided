@@ -1,12 +1,16 @@
 const { Type, FunctionType } = require("./type");
 const Result = require("../util/result");
 
+/**
+ * Class representing a state of the typechecker
+ */
 class State {
     constructor() {
         /** @type {Map<string, FunctionType>} */
         this.functions = new Map();
         /** @type {Map<string, Type>} */
         this.types = new Map();
+        this.code = "";
     }
     /**
      * 

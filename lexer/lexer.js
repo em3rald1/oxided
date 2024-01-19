@@ -1,16 +1,17 @@
 const Token = require("./token");
-
-/**
- * @param {string} source
- * @returns {Token[]}
- */
-
 const BREAKABLE_CHAR = ' \n\t+-/*&%|^=;#.[]()<>:,!{}"\'';
 const KEYWORDS = ['fn', 'let', 'return', 'if', 'else', 'while', 'struct', 'as', 'break']; // struct
 const IS_NUMBER = /^((\d+)|(0[xX][\dA-Fa-f]+)|(0[bB][01]+))$/gm;
-
+/**
+ * Turns a source string into an array of tokens.
+ * @example
+ * const source = "let x: word = 5;";
+ * const tokens = tokenize(source);
+ * console.log(tokens); // [Token, Token, Token]
+ * @param {string} source
+ * @returns {Token[]}
+ */
 function tokenize(source) {
-    /** @type {Token[]} */
     const tokens = [];
     let line = 1;
     let offset = 1;

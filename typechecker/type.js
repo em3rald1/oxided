@@ -1,3 +1,6 @@
+/**
+ * Class representing a type of a value
+ */
 class Type {
     /**
      * 
@@ -17,6 +20,9 @@ class Type {
     }
 }
 
+/**
+ * Class representing a type of a data structure
+ */
 class ComplexType extends Type {
     /**
      * @param {string} name
@@ -30,6 +36,9 @@ class ComplexType extends Type {
     }
 }
 
+/**
+ * Class representing a type of a function
+ */
 class FunctionType extends Type {
     /**
      * 

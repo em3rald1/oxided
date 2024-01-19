@@ -4,17 +4,26 @@
 //
 //
 
+/**
+ * Abstract class representing a statement
+ * @abstract
+ */
 class Statement {
     constructor() {
         this.type = 'Statement';
     }    
 }
 
+
+/**
+ * Class representing a declaration of a struct
+ */
 class StructDeclarationStatement extends Statement {
     /**
      * 
      * @param {string} name 
-     * @param {[TypeExpression, string][]} properties 
+     * @param {[TypeExpression, string][]} properties
+     * @constructor 
      */
     constructor(name, properties) {
         super();
@@ -24,6 +33,9 @@ class StructDeclarationStatement extends Statement {
     }
 }
 
+/**
+ * Class representing an if statement
+ */
 class IfStatement extends Statement {
     /**
      * 
@@ -40,6 +52,10 @@ class IfStatement extends Statement {
     }
 }
 
+
+/**
+ * Class representing a break statement
+ */
 class BreakStatement extends Statement {
     constructor() {
         super();
@@ -47,6 +63,9 @@ class BreakStatement extends Statement {
     }
 }
 
+/**
+ * Class representing a return statement with it's value.
+ */
 class ReturnStatement extends Statement {
     /** @param {Expression} value */
     constructor(value) {
@@ -56,6 +75,9 @@ class ReturnStatement extends Statement {
     }
 }
 
+/**
+ * Class representing a while statement
+ */
 class WhileStatement extends Statement {
     /**
      * 
@@ -70,6 +92,9 @@ class WhileStatement extends Statement {
     }
 }
 
+/**
+ * Class representing a function declaration
+ */
 class FunctionDeclarationStatement extends Statement {
     /**
      * 
@@ -90,6 +115,9 @@ class FunctionDeclarationStatement extends Statement {
     }
 }
 
+/**
+ * Class representing a variable declaration
+ */
 class VariableDeclarationStatement extends Statement {
     /**
      * 
@@ -106,6 +134,9 @@ class VariableDeclarationStatement extends Statement {
     }
 }
 
+/**
+ * Class representing an AST
+ */
 class Program extends Statement {
     constructor() {
         super();
@@ -121,6 +152,9 @@ class Program extends Statement {
 //
 //
 
+/**
+ * Class representing a code block
+ */
 class Scope extends Statement {
     /**
      * 
@@ -139,6 +173,10 @@ class Scope extends Statement {
 //
 //
 
+/**
+ * Abstract class representing an expression
+ * @abstract
+ */
 class Expression extends Statement {
     constructor() {
         super();
@@ -146,6 +184,9 @@ class Expression extends Statement {
     }
 }
 
+/**
+ * Class representing an assignment
+ */
 class AssignmentExpression extends Expression {
     /**
      * 
@@ -162,6 +203,9 @@ class AssignmentExpression extends Expression {
     }
 }
 
+/**
+ * Class representing a comparison between 2 values
+ */
 class ComparisonExpression extends Expression {
     /**
      * 
@@ -178,6 +222,9 @@ class ComparisonExpression extends Expression {
     }
 }
 
+/**
+ * Class representing an operation done on 2 values
+ */
 class BinaryExpression extends Expression {
     /**
      * 
@@ -194,6 +241,9 @@ class BinaryExpression extends Expression {
     }
 }
 
+/**
+ * Class representing a cast expression
+ */
 class CastExpression extends Expression {
     /**
      * 
@@ -208,6 +258,9 @@ class CastExpression extends Expression {
     }
 }
 
+/**
+ * Class representing a unary expression
+ */
 class UnaryExpression extends Expression {
     /**
      * 
@@ -222,6 +275,9 @@ class UnaryExpression extends Expression {
     }
 }
 
+/**
+ * Class representing a function call 
+ */
 class CallExpression extends Expression {
     /**
      * 
@@ -238,6 +294,9 @@ class CallExpression extends Expression {
     }
 }
 
+/**
+ * Class representing a property access or indexing of a value
+ */
 class MemberExpression extends Expression {
     /**
      * 
@@ -254,6 +313,9 @@ class MemberExpression extends Expression {
     }
 }
 
+/**
+ * Class representing a parenthesised block
+ */
 class ParenthesisBlock extends Expression {
     constructor(expression) {
         super();
@@ -262,6 +324,9 @@ class ParenthesisBlock extends Expression {
     }
 }
 
+/**
+ * Class representing a number in code
+ */
 class NumberLiteralExpression extends Expression {
     /** @param {number} value */
     constructor(value) {
@@ -271,6 +336,9 @@ class NumberLiteralExpression extends Expression {
     }
 }
 
+/**
+ * Class representing a string in code
+ */
 class StringLiteralExpression extends Expression {
     /** @param {string} value */
     constructor(value) {
@@ -280,6 +348,9 @@ class StringLiteralExpression extends Expression {
     }
 }
 
+/**
+ * Class representing an identifier
+ */
 class IdentifierLiteralExpression extends Expression {
     /** @param {string} value */
     constructor(value) {
@@ -289,11 +360,15 @@ class IdentifierLiteralExpression extends Expression {
     }
 }
 
+/**
+ * Class representing a true/false value
+ */
 class BooleanLiteralExpression extends Expression {
     constructor(value) {
         super();
         this.value = value;
         this.type = 'BooleanLiteralExpression';
+        
     }
 }
 
@@ -303,6 +378,9 @@ class BooleanLiteralExpression extends Expression {
 //
 //
 
+/**
+ * Class representing a type expression
+ */
 class TypeExpression extends Expression {
     /** 
      * 
@@ -317,6 +395,9 @@ class TypeExpression extends Expression {
     }
 }
 
+/**
+ * Class representing a type expression with pointer(s)
+ */
 class PointerTypeExpression extends TypeExpression {
     /** 
      * @param {string} name

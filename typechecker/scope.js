@@ -1,10 +1,13 @@
 const { Type } = require("./type");
 const Result = require("../util/result");
 
+/**
+ * Class representing a block of code
+ */
 class Scope {
     /**
      * 
-     * @param {Scope | undefined} parent
+     * @param {Scope | undefined} parent Parental scope
      * @param {string} lifetime_name
      * @param {string | undefined} external_lifetime
      */

@@ -1,5 +1,9 @@
 const { Type } = require("./type");
 
+/**
+ * Abstract class representing a type of a value
+ * @abstract
+ */
 class Value {
     /**
      * @param {Type} type
@@ -9,6 +13,10 @@ class Value {
     }
 }
 
+/**
+ * Class representing an rvalue
+ * @see {@link https://en.wikipedia.org/wiki/Value_(computer_science)}
+ */
 class RValue extends Value {
     /**
      * 
@@ -20,6 +28,10 @@ class RValue extends Value {
     }
 }
 
+/**
+ * Class representing an lvalue
+ * @see {@link https://en.wikipedia.org/wiki/Value_(computer_science)}
+ */
 class LValue extends Value {
     /**
      * 

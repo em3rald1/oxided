@@ -3,25 +3,46 @@ const Result = require("../util/result");
 const AST = require("./ast");
 const { Expression } = require("./ast");
 
+/**
+ * Class representing a parser which takes tokens produces by a lexer and turns them into an AST (Abstract syntax tree)
+ * @example
+ * const source = "let x: word = 5;";
+ * const tokens = tokenize(source);
+ * const parser = new Parser(tokens);
+ * const ast = parser.parse();
+ * console.log(ast); // Program { body: [ VariableDeclarationStatement ] }
+ * @see {@link https://en.wikipedia.org/wiki/Abstract_syntax_tree}
+ */
 class Parser {
-    /** @param {Token[]} tokens */
+    /** 
+     * @param {Token[]} tokens
+     */
     constructor(tokens) {
         this.tokens = tokens;
         this.i = 0;
     }
 
+    /**
+     * Function returning a current token
+     * @returns {Token}
+     */
     at() {
         return this.tokens[this.i];
     }
 
+    /**
+     * Function consuming and returning the current token
+     * @returns {Token}
+     */
     eat() {
         return this.tokens[this.i++];
     }
 
     /**
-     * 
-     * @param {string} type 
-     * @param {string} error_message
+     * Function consuming and checking if expected type is the same as the type of current token, if so
+     * returns the token, else returns an error
+     * @param {string} type The expected type
+     * @param {string} error_message The error message to return
      * @returns {Result<Token, string>} 
      */
 
@@ -33,6 +54,10 @@ class Parser {
         return Result.Ok(token);
     }
 
+    /**
+     * Function parsing the tokens passed in the constructor and returning the AST
+     * @returns {AST.Program}
+     */
     parse() {
         const program = new AST.Program();
         while(this.at().type != 'EOF') {
@@ -47,12 +72,6 @@ class Parser {
     // Statements
     //
     //
-
-    /* parse_statement() {
-        const statement = this._parse_statement();
-        this.expect('SEMICOLON', `Expected a semicolon after a statement, position ${this.at().line}:${this.at().offset}`).unwrap();
-        return statement;
-    } */
 
     /** @returns {Result<Statement, string>} */
     parse_statement() {
@@ -74,6 +93,10 @@ class Parser {
         }
     }
 
+    /**
+     * Function parsing a struct type declaration
+     * @returns {Result<AST.StructDeclarationStatement, string>}
+     */
     parse_struct_statement() {
         this.eat();
 

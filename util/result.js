@@ -1,19 +1,23 @@
 
 /**
- * 
+ * Function wrapping the error
  * @param  {...any} args
- * @returns {never} 
  */
 function die(...args) {
-    console.log(...args);
-    process.exit(0);
+    throw new Error(...args);
 }
 
 /**
+ * Class representing a Rust-like Result structure
  * @template V,E
  */
 class Result {
+    /**
+     * Shouldn't be called as it makes no value result
+     * @private
+     */
     constructor() {
+        /** @private */
         this.is_err = false;
         /** @type {V} */
         this.value = undefined;
@@ -39,6 +43,7 @@ class Result {
     }
 
     /**
+     * Function constructing a result class with a value
      * @template V, E
      * @param {V} value 
      * @returns {Result<V, E>}
@@ -51,6 +56,7 @@ class Result {
     }
 
     /**
+     * Function constructing a result class with an error
      * @template V, E
      * @param {E} error 
      * @returns {Result<V, E>}
