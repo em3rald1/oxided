@@ -107,14 +107,16 @@ export class FnDecl implements Stmt {
     name: string;
     parameters: [TypeExpr, string][];
     return_type: TypeExpr;
-    body: Block;
+    body: Option<Block>;
+    extern: boolean;
     position: [number, number];
-    constructor(name: string, parameters: [TypeExpr, string][], return_type: TypeExpr, body: Block, position: [number, number]) {
+    constructor(name: string, parameters: [TypeExpr, string][], return_type: TypeExpr, extern: boolean, position: [number, number], body?: Block) {
         this.name = name;
         this.parameters = parameters;
         this.return_type = return_type;
-        this.body = body;
+        this.body = body ? new Some(body) : new None;
         this.position = position;
+        this.extern = extern;
     }
 
     toString(): string {
@@ -127,9 +129,9 @@ export class VarDecl implements Stmt {
     type = StmtType.VarDecl;
     name: string;
     value: Expr;
-    value_type: Option<Expr>;
+    value_type: Option<TypeExpr>;
     position: [number, number];
-    constructor(name: string, value: Expr, position: [number, number], value_type?: Expr) {
+    constructor(name: string, value: Expr, position: [number, number], value_type?: TypeExpr) {
         this.name = name;
         this.value = value;
         this.value_type = value_type ? new Some(value_type) : new None;

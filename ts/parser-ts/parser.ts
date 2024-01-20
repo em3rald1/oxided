@@ -36,6 +36,15 @@ class Parser {
         return new Err(error_message.replace("%tp%", "EOF"));
     }
 
+    expect_value(value: string, error_message: string): Result<Token, string> {
+        const token = this.eat();
+        if(token.is_some()) {
+            if(token.unwrap().value == value) return new Ok(token.unwrap());
+            return new Err(error_message.replace("%tp%", TokenType[token.unwrap().type]));
+        }
+        return new Err(error_message.replace("%tp%", "EOF"));
+    }
+
     parse() {
         const program = new AST.Program([]);
         while(this.at().is_some()) {
@@ -46,14 +55,275 @@ class Parser {
     }
 
     parse_stmt(): Result<AST.Stmt, string> {
-        return this.parse_expr();
+        if(this.at().is_some() && this.at().unwrap().type == TokenType.KEYWORD) {
+            const keyword = this.eat().unwrap();
+            switch(keyword.value) {
+                case 'let': return this.parse_var_decl();
+                case 'fn': return this.parse_fn_decl();
+                case 'ext': {
+                    const _fn = this.expect_value("fn", `Expected an fn keyword after an ext keyword`);
+                    if(_fn.is_err()) return _fn.into();
+                    return this.parse_fn_decl(true);
+                }
+                default: return new Err(`Unknown keyword on position ${keyword.position[0]}:${keyword.position[1]}`);
+            }
+        } else {
+            const _expr = this.parse_expr();
+            if(_expr.is_err()) return _expr;
+            const expr = _expr.unwrap();
+            const _semicolon = this.expect(TokenType.SEMICOLON, `Expected a semicolon after an expression.`);
+            if(_semicolon.is_err()) return _semicolon.into();
+            return new Ok(expr);
+        }
+    }
+
+    parse_fn_decl(ext?: boolean): Result<AST.FnDecl, string> {
+        const _name = this.expect(TokenType.IDENTIFIER, `Expected a function name after a fn keyword`);
+        if(_name.is_err()) return _name.into();
+        const name = _name.unwrap();
+
+        const _lparen = this.expect(TokenType.LPAREN, `Expected an opening parenthesis after a function name`);
+        if(_lparen.is_err()) return _lparen.into();
+
+        const parameters: [AST.TypeExpr, string][] = [];
+
+        while(this.at().is_some() && this.at().unwrap().type != TokenType.RPAREN) {
+            const _param_name = this.expect(TokenType.IDENTIFIER, `Expected a parameter name, position ${this.at().unwrap().position[0]}:${this.at().unwrap().position[1]}`);
+            if(_param_name.is_err()) return _param_name.into();
+            const param_name = _param_name.unwrap();
+
+            const _param_type = this.parse_type_expr();
+            if(_param_type.is_err()) return _param_type.into();
+            const param_type = _param_type.unwrap();
+
+            parameters.push([param_type, param_name.value]);
+
+            if(this.at().is_some() && this.at().unwrap().type != TokenType.RPAREN) {
+                const _comma = this.expect(TokenType.COMMA, `Expected a comma after a parameter`);
+                if(_comma.is_err()) return _comma.into();
+            }
+        }
+        this.eat();
+
+        const _return_type = this.parse_type_expr();
+        if(_return_type.is_err()) return _return_type.into();
+        const return_type = _return_type.unwrap();
+
+        if(ext) {
+            const _semicolon = this.expect(TokenType.SEMICOLON, `Expected a semicolon after an external function declaration`);
+            if(_semicolon.is_err()) return _semicolon.into();
+
+            return new Ok(new AST.FnDecl(name.value, parameters, return_type, true, name.position, undefined));
+        }
+        const _body = this.parse_block();
+        if(_body.is_err()) return _body.into();
+        const body = _body.unwrap();
+
+        return new Ok(new AST.FnDecl(name.value, parameters, return_type, false, name.position, body));
+    }
+
+    parse_block(): Result<AST.Block, string> {
+        const _lbrace = this.expect(TokenType.LBRACE, `Expected an opening brace in a code block`);
+        if(_lbrace.is_err()) return _lbrace.into();
+
+        const body: AST.Stmt[] = [];
+
+        while(this.at().is_some() && this.at().unwrap().type != TokenType.RBRACE) {
+            const _stmt = this.parse_stmt();
+            if(_stmt.is_err()) return _stmt.into();
+            body.push(_stmt.unwrap());
+        }
+        this.eat();
+
+        return new Ok(new AST.Block(body, _lbrace.unwrap().position));
+    }
+
+    parse_var_decl(): Result<AST.VarDecl, string> {
+        const _name = this.expect(TokenType.IDENTIFIER, `Expected an identifier as a variable name`);
+        if(_name.is_err()) return _name.into();
+        const name = _name.unwrap();
+
+        if(this.at().is_some() && this.at().unwrap().value == '=') {
+            this.eat();
+            const _value = this.parse_expr();
+            if(_value.is_err()) return _value.into();
+            const value = _value.unwrap();
+
+            const _semicolon = this.expect(TokenType.SEMICOLON, `Expected a semicolon after a variable declaration`);
+            if(_semicolon.is_err()) return _semicolon.into();
+
+            return new Ok(new AST.VarDecl(name.value, value, name.position, undefined));
+        }
+        const _type = this.parse_type_expr();
+        if(_type.is_err()) return _type.into();
+        const type = _type.unwrap();
+
+        const _eq = this.expect_value('=', `Expected an equals sign after a type in a variable declaration`);
+        if(_eq.is_err()) return _eq.into();
+
+        const _value = this.parse_expr();
+        if(_value.is_err()) return _value.into();
+        const value = _value.unwrap();
+
+        const _semicolon = this.expect(TokenType.SEMICOLON, `Expected a semicolon after a variable declaration`);
+        if(_semicolon.is_err()) return _semicolon.into();
+
+        return new Ok(new AST.VarDecl(name.value, value, name.position, type));
     }
 
     parse_expr(): Result<AST.Expr, string> {
-        return this.parse_bin_expr_add();
+        return this.parse_assignment();
     }
 
-    // TODO: Shifts, bitwise operations, etc.
+    parse_assignment(): Result<AST.Expr, string> {
+        const _assignee = this.parse_logical_or();
+        if(_assignee.is_err()) return _assignee;
+
+        const assignee = _assignee.unwrap();
+
+        if(this.at().is_some() && this.at().unwrap().type == TokenType.ASSIGNMENT) {
+            const operator = this.eat().unwrap().value;
+
+            const _value = this.parse_assignment();
+            if(_value.is_err()) return _value;
+            const value = _value.unwrap();
+
+            return new Ok(new AST.AssignExpr(assignee, value, operator, assignee.position));
+        }
+        return new Ok(assignee);
+    }
+
+    parse_logical_or(): Result<AST.Expr, string> {
+        const _left = this.parse_logical_and();
+        if(_left.is_err()) return _left;
+
+        let left = _left.unwrap();
+
+        while(this.at().is_some() && this.at().unwrap().value == '||') {
+            const operator = this.eat().unwrap().value;
+
+            const _right = this.parse_logical_and();
+            if(_right.is_err()) return _right;
+
+            const right = _right.unwrap();
+
+            left = new AST.BinExpr(left, right, operator, left.position);
+        }
+        return new Ok(left);
+    }
+
+    parse_logical_and(): Result<AST.Expr, string> {
+        const _left = this.parse_comp_expr();
+        if(_left.is_err()) return _left;
+
+        let left = _left.unwrap();
+
+        while(this.at().is_some() && this.at().unwrap().value == '&&') {
+            const operator = this.eat().unwrap().value;
+
+            const _right = this.parse_comp_expr();
+            if(_right.is_err()) return _right;
+
+            const right = _right.unwrap();
+
+            left = new AST.BinExpr(left, right, operator, left.position);
+        }
+        return new Ok(left);
+    }
+
+    parse_comp_expr(): Result<AST.Expr, string> {
+        const _left = this.parse_bin_expr_b_or();
+        if(_left.is_err()) return _left;
+
+        const left = _left.unwrap();
+
+        if(this.at().is_some() && this.at().unwrap().type == TokenType.COMPARISON) {
+            const operator = this.eat().unwrap().value;
+
+            const _right = this.parse_bin_expr_b_or();
+            if(_right.is_err()) return _right;
+
+            const right = _right.unwrap();
+
+            return new Ok(new AST.CompExpr(left, right, operator, left.position));
+        } else return new Ok(left);
+    }
+
+    parse_bin_expr_b_or(): Result<AST.Expr, string> {
+        const _left = this.parse_bin_expr_b_xor();
+        if(_left.is_err()) return _left;
+
+        let left = _left.unwrap();
+
+        while(this.at().is_some() && this.at().unwrap().value == '|') {
+            const operator = this.eat().unwrap().value;
+
+            const _right = this.parse_bin_expr_b_xor();
+            if(_right.is_err()) return _right;
+
+            const right = _right.unwrap();
+
+            left = new AST.BinExpr(left, right, operator, left.position);
+        }
+        return new Ok(left);
+    }
+
+    parse_bin_expr_b_xor(): Result<AST.Expr, string> {
+        const _left = this.parse_bin_expr_b_and();
+        if(_left.is_err()) return _left;
+
+        let left = _left.unwrap();
+
+        while(this.at().is_some() && this.at().unwrap().value == '^') {
+            const operator = this.eat().unwrap().value;
+
+            const _right = this.parse_bin_expr_b_and();
+            if(_right.is_err()) return _right;
+
+            const right = _right.unwrap();
+
+            left = new AST.BinExpr(left, right, operator, left.position);
+        }
+        return new Ok(left);
+    }
+
+    parse_bin_expr_b_and(): Result<AST.Expr, string> {
+        const _left = this.parse_bin_expr_shift();
+        if(_left.is_err()) return _left;
+
+        let left = _left.unwrap();
+
+        while(this.at().is_some() && this.at().unwrap().value == '&') {
+            const operator = this.eat().unwrap().value;
+
+            const _right = this.parse_bin_expr_shift();
+            if(_right.is_err()) return _right;
+
+            const right = _right.unwrap();
+
+            left = new AST.BinExpr(left, right, operator, left.position);
+        }
+        return new Ok(left);
+    }
+
+    parse_bin_expr_shift(): Result<AST.Expr, string> {
+        const _left = this.parse_bin_expr_add();
+        if(_left.is_err()) return _left;
+
+        let left = _left.unwrap();
+
+        while(this.at().is_some() && ['>>', '<<'].includes(this.at().unwrap().value)) {
+            const operator = this.eat().unwrap().value;
+
+            const _right = this.parse_bin_expr_add();
+            if(_right.is_err()) return _right;
+
+            const right = _right.unwrap();
+
+            left = new AST.BinExpr(left, right, operator, left.position);
+        }
+        return new Ok(left);
+    }
 
     parse_bin_expr_add(): Result<AST.Expr, string> {
         const _left = this.parse_bin_expr_mul();
@@ -218,7 +488,7 @@ class Parser {
 }
 
 import tokenize from "../lexer-ts/lexer";
-const src = "5 as char + 3 as char";
+const src = "ext fn printf(s *uword, any **void) void;";
 const tokens = tokenize(src);
 tokens.map(v => console.log(v.toString()));
 const parser = new Parser(tokens);

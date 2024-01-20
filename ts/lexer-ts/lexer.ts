@@ -1,6 +1,6 @@
 import Token, { TokenType } from "./token";
 
-const KEYWORDS = ['fn', 'let', 'return', 'if', 'else', 'while', 'struct', 'as', 'break'];
+const KEYWORDS = ['fn', 'let', 'return', 'if', 'else', 'while', 'struct', 'as', 'break', 'ext'];
 const BREAK_CHAR = " \t\r\n()<>{}[]:;.,=!'+-/%*&|^";
 const NUMBER_REGEX = /^((0x[\dA-Fa-f]*)|(\d+)|(0b[01]*))$/gmi;
 
@@ -90,6 +90,31 @@ export default function tokenize(src: string) {
                 tokens.push(
                     new Token(TokenType.COMPARISON, current_char, [column, row])
                 );
+                break;
+            case '&':
+            case '|':
+                if(src[cindex + 1] == '=') {
+                    tokens.push(new Token(TokenType.ASSIGNMENT, current_char + '=', [column, row]));
+                    cindex += 1;
+                    column += 1;
+                    break;
+                }
+                if(src[cindex + 1] == current_char) {
+                    tokens.push(new Token(TokenType.BINARY, current_char.repeat(2), [column, row]));
+                    cindex += 1;
+                    column += 1;
+                    break;
+                }
+                tokens.push(new Token(TokenType.BINARY, current_char, [column, row]));
+                break;
+            case '^':
+                if(src[cindex + 1] == '=') {
+                    tokens.push(new Token(TokenType.ASSIGNMENT, current_char + '=', [column, row]));
+                    cindex += 1;
+                    column += 1;
+                    break;
+                }
+                tokens.push(new Token(TokenType.BINARY, current_char, [column, row]));
                 break;
             case '=':
                 if(src[cindex + 1] == current_char) {
