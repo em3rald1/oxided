@@ -7,7 +7,7 @@ const MEMBER_EXPR_OPERATORS = [TokenType.DOT, TokenType.LBRACKET];
 
 const UNARY_OPERATORS = ['-', '*', '&', '!'];
 
-class Parser {
+export default class Parser {
     private tokens: Token[];
     private tindex: number;
     constructor(tokens: Token[]) {
@@ -25,6 +25,12 @@ class Parser {
         const token = this.at();
         this.tindex += 1;
         return token;
+    }
+
+    prev(): Option<Token> {
+        const token = this.tokens[this.tindex - 1];
+        if(token.type != TokenType.EOF) return new Some(token);
+        else return new None;
     }
 
     expect(type: TokenType, error_message: string): Result<Token, string> {
@@ -65,6 +71,11 @@ class Parser {
                     if(_fn.is_err()) return _fn.into();
                     return this.parse_fn_decl(true);
                 }
+                case 'if': return this.parse_if();
+                case 'return': return this.parse_return();
+                case 'while': return this.parse_while();
+                case 'break': return this.parse_break();
+                case 'struct': return this.parse_struct();
                 default: return new Err(`Unknown keyword on position ${keyword.position[0]}:${keyword.position[1]}`);
             }
         } else {
@@ -75,6 +86,112 @@ class Parser {
             if(_semicolon.is_err()) return _semicolon.into();
             return new Ok(expr);
         }
+    }
+
+    parse_struct(): Result<AST.StructDecl, string> {
+        const { position } = this.prev().unwrap();
+        const _name = this.expect(TokenType.IDENTIFIER, `Expected a struct name after a struct keyword`);
+        if(_name.is_err()) return _name.into();
+        const name = _name.unwrap().value;
+
+        const _lbrace = this.expect(TokenType.LBRACE, `Expected an opening brace after a struct name`);
+        if(_lbrace.is_err()) return _lbrace.into();
+
+        const properties: [AST.TypeExpr, string][] = [];
+
+        while(this.at().is_some() && this.at().unwrap().type != TokenType.RBRACE) {
+            const _prop_name = this.expect(TokenType.IDENTIFIER, `Expected a property name`);
+            if(_prop_name.is_err()) return _prop_name.into();
+            const prop_name = _prop_name.unwrap().value;
+            
+            const _prop_type = this.parse_type_expr();
+            if(_prop_type.is_err()) return _prop_type.into();
+            const prop_type = _prop_type.unwrap();
+
+            const _semicolon = this.expect(TokenType.SEMICOLON, `Expected a semicolon after a property declaration`);
+            if(_semicolon.is_err()) return _semicolon.into();
+            properties.push([prop_type, prop_name]);
+        }
+        this.eat();
+
+        return new Ok(new AST.StructDecl(name, properties, position));
+    }
+
+    parse_break(): Result<AST.BreakStmt, string> {
+        const { position } = this.prev().unwrap();
+        return new Ok(new AST.BreakStmt(position));
+    }
+
+    parse_while(): Result<AST.WhileStmt, string> {
+        const { position } = this.prev().unwrap();
+        const _lparen = this.expect(TokenType.LPAREN, `Expected an opening parenthesis after a while keyword`);
+        if(_lparen.is_err()) return _lparen.into();
+
+        const _condition = this.parse_expr();
+        if(_condition.is_err()) return _condition.into();
+        const condition = _condition.unwrap();
+
+        const _rparen = this.expect(TokenType.RPAREN, `Expected a closing parenthesis after a while condition`);
+        if(_rparen.is_err()) return _rparen.into();
+
+        const _body = this.parse_block();
+        if(_body.is_err()) return _body.into();
+        const body = _body.unwrap();
+
+        return new Ok(new AST.WhileStmt(condition, body, position));
+    }
+
+    parse_if(): Result<AST.IfStmt, string> {
+        const position = this.prev().unwrap().position;
+        const _lparen = this.expect(TokenType.LPAREN, `Expected an opening parenthesis after an if keyword`);
+        if(_lparen.is_err()) return _lparen.into();
+
+        const _condition = this.parse_expr();
+        if(_condition.is_err()) return _condition.into();
+        const condition = _condition.unwrap();
+
+        const _rparen = this.expect(TokenType.RPAREN, `Expected a closing parenthesis after an if condition`);
+        if(_rparen.is_err()) return _rparen.into();
+
+        const _body = this.parse_block();
+        if(_body.is_err()) return _body.into();
+        const body = _body.unwrap();
+
+        if(this.at().is_some() && this.at().unwrap().value == 'else') {
+            this.eat();
+            if(this.at().is_some() && this.at().unwrap().value == 'if') {
+                this.eat();
+                const _elsebody = this.parse_if();
+                if(_elsebody.is_err()) return _elsebody;
+                const elsebody = _elsebody.unwrap();
+
+                return new Ok(new AST.IfStmt(condition, body, position, elsebody));
+            }
+            const _elsebody = this.parse_block();
+            if(_elsebody.is_err()) return _elsebody.into();
+            const elsebody = _elsebody.unwrap();
+
+            return new Ok(new AST.IfStmt(condition, body, position, elsebody));
+        } else {
+            return new Ok(new AST.IfStmt(condition, body, position));
+        }
+
+    }
+
+    parse_return(): Result<AST.ReturnStmt, string> {
+        const { position } = this.prev().unwrap();
+        if(this.at().is_some() && this.at().unwrap().type != TokenType.SEMICOLON) {
+            const _value = this.parse_expr();
+            if(_value.is_err()) return _value.into();
+            const value = _value.unwrap();
+
+            const _semicolon = this.expect(TokenType.SEMICOLON, `Expected a semicolon after a return value`);
+            if(_semicolon.is_err()) return _semicolon.into();
+
+            return new Ok(new AST.ReturnStmt(position, value));
+        }
+        this.eat();
+        return new Ok(new AST.ReturnStmt(position));
     }
 
     parse_fn_decl(ext?: boolean): Result<AST.FnDecl, string> {
@@ -486,11 +603,3 @@ class Parser {
         return new Ok(new AST.TypeExpr(name, pointers, start.position));
     }
 }
-
-import tokenize from "../lexer-ts/lexer";
-const src = "ext fn printf(s *uword, any **void) void;";
-const tokens = tokenize(src);
-tokens.map(v => console.log(v.toString()));
-const parser = new Parser(tokens);
-const ast = parser.parse();
-console.log(ast);
