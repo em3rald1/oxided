@@ -27,12 +27,14 @@ export class Program implements Stmt {
 export class StructDecl implements Stmt {
     type = StmtType.StructDecl;
     name: string;
+    name_pos: [number, number];
     properties: [TypeExpr, string][];
     position: [number, number];
-    constructor(name: string, properties: [TypeExpr, string][], position: [number, number]) {
+    constructor(name: string, properties: [TypeExpr, string][], position: [number, number], name_pos: [number, number]) {
         this.name = name;
         this.properties = properties;
         this.position = position;
+        this.name_pos = name_pos;
     }
     toString(): string {
         return `[StructDecl: name = ${this.name}, properties = ... ${this.properties.length} elements]`;
@@ -128,12 +130,12 @@ export class FnDecl implements Stmt {
 export class VarDecl implements Stmt {
     type = StmtType.VarDecl;
     name: string;
-    value: Expr;
+    value: Option<Expr>;
     value_type: Option<TypeExpr>;
     position: [number, number];
-    constructor(name: string, value: Expr, position: [number, number], value_type?: TypeExpr) {
+    constructor(name: string, position: [number, number], value?: Expr, value_type?: TypeExpr) {
         this.name = name;
-        this.value = value;
+        this.value = value ? new Some(value) : new None;
         this.value_type = value_type ? new Some(value_type) : new None;
         this.position = position;
     }

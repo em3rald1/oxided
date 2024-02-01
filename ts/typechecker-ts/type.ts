@@ -2,7 +2,7 @@ export interface TypecheckerType {
     toString(): string; 
     get_name(): string;
     get_pointers(): number;
-    set_pointers(x: number);
+    set_pointers(x: number): void;
 }
 
 export class Type implements TypecheckerType {
@@ -73,7 +73,7 @@ export class FunctionType implements TypecheckerType {
 
     get_pointers() { return -1; }
 
-    set_pointers(_) {}
+    set_pointers(_: number) {}
 
     get_params(): [TypecheckerType, string][] {
         return this.params;

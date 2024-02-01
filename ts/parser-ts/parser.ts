@@ -92,6 +92,7 @@ export default class Parser {
         const { position } = this.prev().unwrap();
         const _name = this.expect(TokenType.IDENTIFIER, `Expected a struct name after a struct keyword`);
         if(_name.is_err()) return _name.into();
+        const name_pos = _name.unwrap().position;
         const name = _name.unwrap().value;
 
         const _lbrace = this.expect(TokenType.LBRACE, `Expected an opening brace after a struct name`);
@@ -114,7 +115,7 @@ export default class Parser {
         }
         this.eat();
 
-        return new Ok(new AST.StructDecl(name, properties, position));
+        return new Ok(new AST.StructDecl(name, properties, position, name_pos));
     }
 
     parse_break(): Result<AST.BreakStmt, string> {
@@ -269,12 +270,15 @@ export default class Parser {
             const _semicolon = this.expect(TokenType.SEMICOLON, `Expected a semicolon after a variable declaration`);
             if(_semicolon.is_err()) return _semicolon.into();
 
-            return new Ok(new AST.VarDecl(name.value, value, name.position, undefined));
+            return new Ok(new AST.VarDecl(name.value, name.position, value));
         }
         const _type = this.parse_type_expr();
         if(_type.is_err()) return _type.into();
         const type = _type.unwrap();
 
+        if(this.at().is_some() && this.at().unwrap().type == TokenType.SEMICOLON) {
+            return new Ok(new AST.VarDecl(name.value, name.position, undefined, type));
+        }
         const _eq = this.expect_value('=', `Expected an equals sign after a type in a variable declaration`);
         if(_eq.is_err()) return _eq.into();
 
@@ -285,7 +289,7 @@ export default class Parser {
         const _semicolon = this.expect(TokenType.SEMICOLON, `Expected a semicolon after a variable declaration`);
         if(_semicolon.is_err()) return _semicolon.into();
 
-        return new Ok(new AST.VarDecl(name.value, value, name.position, type));
+        return new Ok(new AST.VarDecl(name.value, name.position, value, type));
     }
 
     parse_expr(): Result<AST.Expr, string> {

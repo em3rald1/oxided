@@ -7,9 +7,11 @@ export interface Result<T, E> {
     is_err(): boolean;
     unwrap(): T;
 
+    ok(): Option<T>;
+
     into<X, Y>(): Result<X, Y>;
 
-    get __err(): Option<E>;
+    err(): Option<E>;
 }
 
 export class Ok<T, E> implements Result<T, E> {
@@ -30,9 +32,15 @@ export class Ok<T, E> implements Result<T, E> {
     is_err(): boolean { return false; }
     unwrap(): T { return this.value; }
 
-    into<X, Y>(): Result<X, Y> { return <Result<X, Y>><unknown>this; }
+    ok(): Option<T> {
+        return new Some(this.value);
+    }
 
-    get __err(): Option<E> { return new None;}
+    err(): Option<E> {
+        return new None;
+    }
+
+    into<X, Y>(): Result<X, Y> { return <Result<X, Y>><unknown>this; }
 }
 
 export class Err<T, E> implements Result<T, E> {
@@ -57,7 +65,13 @@ export class Err<T, E> implements Result<T, E> {
         throw "Err.unwrap";
     }
 
-    into<X, Y>(): Result<X, Y> { return <Result<X, Y>><unknown>this; }
+    ok(): Option<T> {
+        return new None;
+    }
 
-    get __err(): Option<E> { return new Some(this.error); }
+    err(): Option<E> {
+        return new Some(this.error);
+    }
+
+    into<X, Y>(): Result<X, Y> { return <Result<X, Y>><unknown>this; }
 }
