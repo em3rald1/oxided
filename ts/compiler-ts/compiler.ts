@@ -10,6 +10,14 @@ type CompilerErr = { position: [number, number], message: string };
 type CompilerValue = { type: CompilerType, value: Value };
 type FunctionType = { name: string, parameters: [CompilerType, string][], return_type: CompilerType };
 
+const OPERATOR_MAP = {
+    '+': 'ADD',
+    '-': 'SUB',
+    '*': 'MLT',
+    '/': 'DIV',
+    '%': 'MOD'
+}
+
 const FREE = true, USED = false;
 
 export default class Compiler {
@@ -104,12 +112,37 @@ export default class Compiler {
     }
 
     compile_expr(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
-        return this.compile_unary_expr(scope, expr);
+        return this.compile_bin_expr(scope, expr);
     }
 
     compile_bin_expr(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
         if(expr instanceof AST.BinExpr) {
-            
+            const _left = this.compile_bin_expr(scope, expr.left);
+            if(_left.is_err()) return _left;
+            const left = _left.unwrap();
+
+            const _right = this.compile_bin_expr(scope, expr.right);
+            if(_right.is_err()) return _right;
+            const right = _right.unwrap();
+
+            switch(expr.operator) {
+                case '+':
+                case '-':
+                case '/':
+                case '*':
+                case '%': {
+                    if(left.value.get_value_type() == ValueType.LVALUE)
+                        scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
+                    if(right.value.get_value_type() == ValueType.LVALUE) 
+                        scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
+                    const _register = this.reg_alloc();
+                    if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
+                    const register = _register.unwrap();
+                    scope.code += `${OPERATOR_MAP[expr.operator]} R${register} ${left.value.compile()} ${right.value.compile()}\n`;
+                    return new Ok({ type: _.cloneDeep(left.type), value: new RegisterValue(register, ValueType.RVALUE) });
+                }
+                default: new Err({ position: expr.position, message: `Unknown operator: ${expr.operator}` });
+            }
         } else return this.compile_cast_expr(scope, expr);
     }
 
@@ -279,7 +312,7 @@ export default class Compiler {
 import tokenize from "../lexer-ts/lexer";
 import Parser from "../parser-ts/parser";
 import Typechecker from "../typechecker-ts/typechecker";
-const src = "ext fn printf(data *uword) void;\nlet data *uword = 5;\nprintf(data);\n"
+const src = "let x = 5; let y = 6; let z = x + y; let f = z - x;"
 const tokens = tokenize(src);
 const parser = new Parser(tokens);
 const ast = parser.parse();
