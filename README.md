@@ -1,28 +1,23 @@
 # Oxided
+Oxided is a programming with its main target being [URCL](https://github.com/ModPunchtree/URCL). 
 
-Oxided will be a programming language with a couple of the features such as lifetimes (at least a bit close to them) being taken from Rust.
-It will be a (poorly optimized) compiled language with it's main target being URCL.
+> [!CAUTION]
+> This project is in very stages of development. Not all the features are working properly at this point in time. And if they do work, they are most likely not optimized
 
-## Syntax example
-
+## 📖 Syntax example
+Simple hello world:
 ```
-include "file.ox";
-
-fn main(argc word, argv *str) word {
-    let x word = 5;
-    let y str = "hello world";
-    printf("%s", str);
-    return 0;
+import "std"; # import statement (no support yet)
+fn main(argc word, argv *str) word { # a function with a word return type (URCL is word-addressed assembly, which means there cannot be any other way to represent primitive data other than a word)
+    let y str = "hello world"; # variable definition
+    printf("%s\n", str); # function call
+    return 0; # return statement
 }
 ```
 
-## TODO
+## 📜 Goals in the near future for this project
 
-- Compiler
-- Imports
-
-## Currently implemented features
-
-- Lexer / tokenizer
-- Parser into AST
-- Typechecker with verbose error messages
+- Full compiler support
+- Allow for recursive code
+- AST Folding
+- Assembly optimization
