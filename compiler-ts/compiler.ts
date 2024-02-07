@@ -56,13 +56,14 @@ export default class Compiler {
     }
 
     compile() {
+        const starting_code = `BITS 32\nMINREG ${this.registers.length + 3}\nMINHEAP 0xffff\nMINSTACK 0xffff\nMOV R2 M0\n`;
         const scope = new Scope();
         for(const stmt of this.ast.body) {
             const _value = this.compile_stmt(scope, stmt);
             if(_value.is_some()) return this.log_error(_value.unwrap());
             this.reg_free_all();
         }
-        return scope.code;
+        return starting_code + scope.code;
     }
 
     compile_stmt(scope: Scope, stmt: AST.Stmt): Option<CompilerErr> {
@@ -308,18 +309,3 @@ export default class Compiler {
         console.log(`${' '.repeat(offset)}^ ${error.message}`);
     }
 }
-
-import tokenize from "../lexer-ts/lexer";
-import Parser from "../parser-ts/parser";
-import Typechecker from "../typechecker-ts/typechecker";
-const src = "let x = 5; let y = 6; let z = x + y; let f = z - x;"
-const tokens = tokenize(src);
-const parser = new Parser(tokens);
-const ast = parser.parse();
-console.log(ast);
-const typechecker = new Typechecker(src, ast);
-const err = typechecker.validate();
-if(err.is_some()) throw 'Typechecker.err';
-const compiler = new Compiler(src, ast);
-const code = compiler.compile();
-console.log(code);
