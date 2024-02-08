@@ -7,12 +7,17 @@ const MEMBER_EXPR_OPERATORS = [TokenType.DOT, TokenType.LBRACKET];
 
 const UNARY_OPERATORS = ['-', '*', '&', '!'];
 
+type ParserError = [[number, number], string];
+
+
 export default class Parser {
     private tokens: Token[];
     private tindex: number;
-    constructor(tokens: Token[]) {
+    private src: string[];
+    constructor(src: string, tokens: Token[]) {
         this.tindex = 0;
         this.tokens = tokens;
+        this.src = src.split("\n");
     }
 
     at(): Option<Token> {
@@ -33,13 +38,13 @@ export default class Parser {
         else return new None;
     }
 
-    expect(type: TokenType, error_message: string): Result<Token, string> {
+    expect(type: TokenType, error_message: string): Result<Token, ParserError> {
         const token = this.eat();
         if(token.is_some()) {
             if(token.unwrap().type == type) return new Ok(token.unwrap());
-            return new Err(error_message.replace("%tp%", TokenType[token.unwrap().type]));
+            return new Err([token.unwrap().position, error_message.replace("%tp%", TokenType[token.unwrap().type])]);
         }
-        return new Err(error_message.replace("%tp%", "EOF"));
+        return new Err([token.unwrap().position, error_message.replace("%tp%", "EOF")]);
     }
 
     expect_value(value: string, error_message: string): Result<Token, string> {
@@ -55,12 +60,13 @@ export default class Parser {
         const program = new AST.Program([]);
         while(this.at().is_some()) {
             const stmt = this.parse_stmt();
+            if(stmt.is_err()) this.error_log(stmt.err().unwrap());
             program.body.push(stmt.unwrap());
         }
         return program;
     }
 
-    parse_stmt(): Result<AST.Stmt, string> {
+    parse_stmt(): Result<AST.Stmt, ParserError> {
         if(this.at().is_some() && this.at().unwrap().type == TokenType.KEYWORD) {
             const keyword = this.eat().unwrap();
             switch(keyword.value) {
@@ -76,7 +82,7 @@ export default class Parser {
                 case 'while': return this.parse_while();
                 case 'break': return this.parse_break();
                 case 'struct': return this.parse_struct();
-                default: return new Err(`Unknown keyword on position ${keyword.position[0]}:${keyword.position[1]}`);
+                default: return new Err([keyword.position, `Unknown keyword on position ${keyword.position[0]}:${keyword.position[1]}`]);
             }
         } else {
             const _expr = this.parse_expr();
@@ -88,7 +94,7 @@ export default class Parser {
         }
     }
 
-    parse_struct(): Result<AST.StructDecl, string> {
+    parse_struct(): Result<AST.StructDecl, ParserError> {
         const { position } = this.prev().unwrap();
         const _name = this.expect(TokenType.IDENTIFIER, `Expected a struct name after a struct keyword`);
         if(_name.is_err()) return _name.into();
@@ -118,12 +124,12 @@ export default class Parser {
         return new Ok(new AST.StructDecl(name, properties, position, name_pos));
     }
 
-    parse_break(): Result<AST.BreakStmt, string> {
+    parse_break(): Result<AST.BreakStmt, ParserError> {
         const { position } = this.prev().unwrap();
         return new Ok(new AST.BreakStmt(position));
     }
 
-    parse_while(): Result<AST.WhileStmt, string> {
+    parse_while(): Result<AST.WhileStmt, ParserError> {
         const { position } = this.prev().unwrap();
         const _lparen = this.expect(TokenType.LPAREN, `Expected an opening parenthesis after a while keyword`);
         if(_lparen.is_err()) return _lparen.into();
@@ -142,7 +148,7 @@ export default class Parser {
         return new Ok(new AST.WhileStmt(condition, body, position));
     }
 
-    parse_if(): Result<AST.IfStmt, string> {
+    parse_if(): Result<AST.IfStmt, ParserError> {
         const position = this.prev().unwrap().position;
         const _lparen = this.expect(TokenType.LPAREN, `Expected an opening parenthesis after an if keyword`);
         if(_lparen.is_err()) return _lparen.into();
@@ -179,7 +185,7 @@ export default class Parser {
 
     }
 
-    parse_return(): Result<AST.ReturnStmt, string> {
+    parse_return(): Result<AST.ReturnStmt, ParserError> {
         const { position } = this.prev().unwrap();
         if(this.at().is_some() && this.at().unwrap().type != TokenType.SEMICOLON) {
             const _value = this.parse_expr();
@@ -195,7 +201,7 @@ export default class Parser {
         return new Ok(new AST.ReturnStmt(position));
     }
 
-    parse_fn_decl(ext?: boolean): Result<AST.FnDecl, string> {
+    parse_fn_decl(ext?: boolean): Result<AST.FnDecl, ParserError> {
         const _name = this.expect(TokenType.IDENTIFIER, `Expected a function name after a fn keyword`);
         if(_name.is_err()) return _name.into();
         const name = _name.unwrap();
@@ -240,7 +246,7 @@ export default class Parser {
         return new Ok(new AST.FnDecl(name.value, parameters, return_type, false, name.position, body));
     }
 
-    parse_block(): Result<AST.Block, string> {
+    parse_block(): Result<AST.Block, ParserError> {
         const _lbrace = this.expect(TokenType.LBRACE, `Expected an opening brace in a code block`);
         if(_lbrace.is_err()) return _lbrace.into();
 
@@ -256,7 +262,7 @@ export default class Parser {
         return new Ok(new AST.Block(body, _lbrace.unwrap().position));
     }
 
-    parse_var_decl(): Result<AST.VarDecl, string> {
+    parse_var_decl(): Result<AST.VarDecl, ParserError> {
         const _name = this.expect(TokenType.IDENTIFIER, `Expected an identifier as a variable name`);
         if(_name.is_err()) return _name.into();
         const name = _name.unwrap();
@@ -292,11 +298,11 @@ export default class Parser {
         return new Ok(new AST.VarDecl(name.value, name.position, value, type));
     }
 
-    parse_expr(): Result<AST.Expr, string> {
+    parse_expr(): Result<AST.Expr, ParserError> {
         return this.parse_assignment();
     }
 
-    parse_assignment(): Result<AST.Expr, string> {
+    parse_assignment(): Result<AST.Expr, ParserError> {
         const _assignee = this.parse_logical_or();
         if(_assignee.is_err()) return _assignee;
 
@@ -314,7 +320,7 @@ export default class Parser {
         return new Ok(assignee);
     }
 
-    parse_logical_or(): Result<AST.Expr, string> {
+    parse_logical_or(): Result<AST.Expr, ParserError> {
         const _left = this.parse_logical_and();
         if(_left.is_err()) return _left;
 
@@ -333,7 +339,7 @@ export default class Parser {
         return new Ok(left);
     }
 
-    parse_logical_and(): Result<AST.Expr, string> {
+    parse_logical_and(): Result<AST.Expr, ParserError> {
         const _left = this.parse_comp_expr();
         if(_left.is_err()) return _left;
 
@@ -352,7 +358,7 @@ export default class Parser {
         return new Ok(left);
     }
 
-    parse_comp_expr(): Result<AST.Expr, string> {
+    parse_comp_expr(): Result<AST.Expr, ParserError> {
         const _left = this.parse_bin_expr_b_or();
         if(_left.is_err()) return _left;
 
@@ -370,7 +376,7 @@ export default class Parser {
         } else return new Ok(left);
     }
 
-    parse_bin_expr_b_or(): Result<AST.Expr, string> {
+    parse_bin_expr_b_or(): Result<AST.Expr, ParserError> {
         const _left = this.parse_bin_expr_b_xor();
         if(_left.is_err()) return _left;
 
@@ -389,7 +395,7 @@ export default class Parser {
         return new Ok(left);
     }
 
-    parse_bin_expr_b_xor(): Result<AST.Expr, string> {
+    parse_bin_expr_b_xor(): Result<AST.Expr, ParserError> {
         const _left = this.parse_bin_expr_b_and();
         if(_left.is_err()) return _left;
 
@@ -408,7 +414,7 @@ export default class Parser {
         return new Ok(left);
     }
 
-    parse_bin_expr_b_and(): Result<AST.Expr, string> {
+    parse_bin_expr_b_and(): Result<AST.Expr, ParserError> {
         const _left = this.parse_bin_expr_shift();
         if(_left.is_err()) return _left;
 
@@ -427,7 +433,7 @@ export default class Parser {
         return new Ok(left);
     }
 
-    parse_bin_expr_shift(): Result<AST.Expr, string> {
+    parse_bin_expr_shift(): Result<AST.Expr, ParserError> {
         const _left = this.parse_bin_expr_add();
         if(_left.is_err()) return _left;
 
@@ -446,7 +452,7 @@ export default class Parser {
         return new Ok(left);
     }
 
-    parse_bin_expr_add(): Result<AST.Expr, string> {
+    parse_bin_expr_add(): Result<AST.Expr, ParserError> {
         const _left = this.parse_bin_expr_mul();
         if(_left.is_err()) return _left;
 
@@ -465,7 +471,7 @@ export default class Parser {
         return new Ok(left);
     }
 
-    parse_bin_expr_mul(): Result<AST.Expr, string> {
+    parse_bin_expr_mul(): Result<AST.Expr, ParserError> {
         const _left = this.parse_cast_expr();
         if(_left.is_err()) return _left;
 
@@ -484,7 +490,7 @@ export default class Parser {
         return new Ok(left);
     }
 
-    parse_cast_expr(): Result<AST.Expr, string> {
+    parse_cast_expr(): Result<AST.Expr, ParserError> {
         const _castee = this.parse_unary_expr();
         if(_castee.is_err()) return _castee;
 
@@ -499,7 +505,7 @@ export default class Parser {
         } else return new Ok(castee);
     }
 
-    parse_unary_expr(): Result<AST.Expr, string> {
+    parse_unary_expr(): Result<AST.Expr, ParserError> {
         if(this.at().is_some() && UNARY_OPERATORS.includes(this.at().unwrap().value)) {
             const operator = this.eat().unwrap();
             const _operand = this.parse_call_expr();
@@ -509,7 +515,7 @@ export default class Parser {
         } else return this.parse_call_expr();
     }
 
-    parse_call_expr(): Result<AST.Expr, string> {
+    parse_call_expr(): Result<AST.Expr, ParserError> {
         const _callee = this.parse_member_expr();
         if(_callee.is_err()) return _callee;
 
@@ -534,7 +540,7 @@ export default class Parser {
         return new Ok(callee);
     }
 
-    parse_member_expr(): Result<AST.Expr, string> {
+    parse_member_expr(): Result<AST.Expr, ParserError> {
         const _object = this.parse_literal();
         if(_object.is_err()) return _object;
 
@@ -562,9 +568,9 @@ export default class Parser {
         return new Ok(object);
     }
 
-    parse_literal(): Result<AST.Expr, string> {
+    parse_literal(): Result<AST.Expr, ParserError> {
         const opt_token = this.eat();
-        if(opt_token.is_none()) return new Err(`Unexpected end of file`);
+        if(opt_token.is_none()) return new Err([opt_token.unwrap().position, `Unexpected end of file`]);
         const token = opt_token.unwrap();
         switch(token.type) {
             case TokenType.NUMBER: {
@@ -587,12 +593,12 @@ export default class Parser {
                 return new Ok(new AST.ParenBlock(expr.unwrap(), token.position));
             }
             default: {
-                return new Err(`Unexpected token of type ${TokenType[token.type]}, position ${token.position[0]}:${token.position[1]}`);
+                return new Err([token.position, `Unexpected token of type ${TokenType[token.type]}, position ${token.position[0]}:${token.position[1]}`]);
             }
         }
     }
 
-    parse_type_expr(): Result<AST.TypeExpr, string> {
+    parse_type_expr(): Result<AST.TypeExpr, ParserError> {
         const start = this.at().unwrap();
         let pointers = 0;
         while(this.at().is_some() && this.at().unwrap().value == '*') {
@@ -601,9 +607,17 @@ export default class Parser {
         }
 
         const _name = this.expect(TokenType.IDENTIFIER, `Expected a type name, got %tp% instead`);
-        if(_name.is_err()) return _name.into();
+        if(_name.is_err()) return new Err([start.position, `Expected a type name`]);
         const name = _name.unwrap().value;
 
         return new Ok(new AST.TypeExpr(name, pointers, start.position));
+    }
+
+    error_log(error: ParserError): void {
+        const line = error[0][1];
+        const src_line = this.src[line - 1].replace('\t', ' ');
+        console.log(`${line}: ${src_line}`);
+        const offset = line.toString().length + error[0][0];
+        console.log(`${' '.repeat(offset)}^ ${error[1]}`);
     }
 }
