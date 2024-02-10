@@ -15,7 +15,19 @@ const OPERATOR_MAP = {
     '-': 'SUB',
     '*': 'MLT',
     '/': 'DIV',
-    '%': 'MOD'
+    '%': 'MOD',
+    '>>': 'BSR',
+    '<<': 'BSL',
+    '&': 'AND',
+    '|': 'OR',
+    '^': 'XOR',
+
+    '==': 'SETE',
+    '>=': 'SETGE',
+    '<=': 'SETLE',
+    '>': 'SETG',
+    '<': 'SETL',
+    '!=': 'SETNE'
 }
 
 const FREE = true, USED = false;
@@ -116,6 +128,71 @@ export default class Compiler {
         return this.compile_bin_expr(scope, expr);
     }
 
+    compile_boolean_expr(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
+        if(expr instanceof AST.BinExpr && ['&&', '||'].includes(expr.operator)) {
+            const _left = this.compile_bin_expr(scope, expr.left);
+            if(_left.is_err()) return _left;
+            const left = _left.unwrap();
+
+            const _right = this.compile_bin_expr(scope, expr.right);
+            if(_right.is_err()) return _right;
+            const right = _right.unwrap();
+
+            switch(expr.operator) {
+                case '&&': {
+                    if(left.value.get_value_type() == ValueType.LVALUE)
+                        scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
+                    if(right.value.get_value_type() == ValueType.LVALUE) 
+                        scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
+                    const _register = this.reg_alloc();
+                    if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
+                    const register = _register.unwrap();
+                    scope.code += `SETG R${register} ${left.value.compile()} 0\nSETGE R${register} R${register} ${right.value.compile()}\n`;
+                    return new Ok({ type: _.cloneDeep(left.type), value: new RegisterValue(register, ValueType.RVALUE)});
+                }
+                case '||': {
+                    if(left.value.get_value_type() == ValueType.LVALUE)
+                        scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
+                    if(right.value.get_value_type() == ValueType.LVALUE) 
+                        scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
+                    const _register = this.reg_alloc();
+                    if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
+                    const register = _register.unwrap();
+                    scope.code += `OR R${register} ${left.value.compile()} ${right.value.compile()}\n`;
+                    return new Ok({ type: _.cloneDeep(left.type), value: new RegisterValue(register, ValueType.RVALUE ) });
+                }
+            }
+        } else return this.compile_comparison(scope, expr);
+    }
+
+    compile_comparison(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
+        if(expr instanceof AST.CompExpr) {
+            const _left = this.compile_bin_expr(scope, expr.left);
+            if(_left.is_err()) return _left;
+            const left = _left.unwrap();
+            if(left.value.get_value_type() == ValueType.LVALUE) {
+                scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
+            }
+
+            const _right = this.compile_bin_expr(scope, expr.right);
+            if(_right.is_err()) return _right;
+            const right = _right.unwrap();
+            if(right.value.get_value_type() == ValueType.LVALUE) {
+                scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
+            }
+
+            
+            const _register = this.reg_alloc();
+            if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
+            const register = _register.unwrap();
+
+            scope.code += `${OPERATOR_MAP[expr.operator]} R${register} ${left.value.compile()} ${right.value.compile()}\n`;
+
+            return new Ok({ type: this.types.get("bool"), value: new RegisterValue(register, ValueType.RVALUE) });
+        
+        } else return this.compile_bin_expr(scope, expr);
+    }
+
     compile_bin_expr(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
         if(expr instanceof AST.BinExpr) {
             const _left = this.compile_bin_expr(scope, expr.left);
@@ -127,8 +204,13 @@ export default class Compiler {
             const right = _right.unwrap();
 
             switch(expr.operator) {
+                case '>>':
+                case '<<': 
                 case '+':
                 case '-':
+                case '&':
+                case '|':
+                case '^':
                 case '/':
                 case '*':
                 case '%': {
@@ -141,6 +223,28 @@ export default class Compiler {
                     const register = _register.unwrap();
                     scope.code += `${OPERATOR_MAP[expr.operator]} R${register} ${left.value.compile()} ${right.value.compile()}\n`;
                     return new Ok({ type: _.cloneDeep(left.type), value: new RegisterValue(register, ValueType.RVALUE) });
+                }
+                case '&&': {
+                    if(left.value.get_value_type() == ValueType.LVALUE)
+                        scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
+                    if(right.value.get_value_type() == ValueType.LVALUE) 
+                        scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
+                    const _register = this.reg_alloc();
+                    if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
+                    const register = _register.unwrap();
+                    scope.code += `SETG R${register} ${left.value.compile()} 0\nSETGE R${register} R${register} ${right.value.compile()}\n`;
+                    return new Ok({ type: _.cloneDeep(left.type), value: new RegisterValue(register, ValueType.RVALUE)});
+                }
+                case '||': {
+                    if(left.value.get_value_type() == ValueType.LVALUE)
+                        scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
+                    if(right.value.get_value_type() == ValueType.LVALUE) 
+                        scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
+                    const _register = this.reg_alloc();
+                    if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
+                    const register = _register.unwrap();
+                    scope.code += `OR R${register} ${left.value.compile()} ${right.value.compile()}\n`;
+                    return new Ok({ type: _.cloneDeep(left.type), value: new RegisterValue(register, ValueType.RVALUE ) });
                 }
                 default: new Err({ position: expr.position, message: `Unknown operator: ${expr.operator}` });
             }

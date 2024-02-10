@@ -15,7 +15,7 @@ function main() {
         .parseSync();
     const src = readFileSync(argv.file as string, 'utf-8');
     const tokens = tokenize(src);
-    const parser = new Parser(tokens);
+    const parser = new Parser(src, tokens);
     const ast = parser.parse();
     const typechecker = new Typechecker(src, ast);
     const tc_error = typechecker.validate();
