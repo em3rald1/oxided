@@ -77,12 +77,13 @@ export default class Compiler {
 
     compile() {
         const starting_code = `BITS 32\nMINREG ${this.registers.length + 3}\nMINHEAP 0xffff\nMINSTACK 0xffff\nMOV R2 M0\n`;
-        const scope = new Scope();
+        const scope = new Scope('start');
         for(const stmt of this.ast.body) {
             const _value = this.compile_stmt(scope, stmt);
             if(_value.is_some()) return this.log_error(_value.unwrap());
         }
-        return starting_code + scope.code;
+        if(!this.fns.has('main')) this.log_error({ position: [0, 0], message: `Function main doesn't exist` });
+        return starting_code + scope.code + 'CAL .oxided_main\nHLT\n';
     }
 
     compile_stmt(scope: Scope, stmt: AST.Stmt): Option<CompilerErr> {
@@ -92,21 +93,87 @@ export default class Compiler {
         if(stmt instanceof AST.VarDecl) return this.compile_var_decl(scope, stmt);
         else if(stmt instanceof AST.FnDecl) return this.compile_fn_decl(scope, stmt);
         else if(stmt instanceof AST.WhileStmt) return this.compile_while_stmt(scope, stmt);
+        else if(stmt instanceof AST.ReturnStmt) return this.compile_return_stmt(scope, stmt);
         return this.compile_expr(scope, stmt).err();
     }
 
-    compile_while_stmt(scope: Scope, stmt: AST.WhileStmt): Option<CompilerErr> {
-        const n_scope = new Scope(scope);
-        n_scope.code += `.oxided_while_${++this.state.while_loops}\n`;
-        
-        const _condition = this.compile_expr(n_scope, stmt.condition);
-        if(_condition.is_err()) return _condition.err();
-        const condition = _condition.unwrap();
+    compile_return_stmt(scope: Scope, stmt: AST.ReturnStmt): Option<CompilerErr> {
+        let current_scope = scope;
+        if(stmt.value.is_some()) {
+            const _value = this.compile_expr(scope, stmt.value.unwrap());
+            if(_value.is_err()) return _value.err();
+            let value = _value.unwrap();
 
+            if(value.value.get_value_type() == ValueType.LVALUE) {
+                scope.code += `LOD ${value.value.compile()} ${value.value.compile()}\n`;
+                value = this.to_rvalue(value);
+            }
+            
+            
+            while(!current_scope.name.endsWith(".fn")) {
+                if(current_scope.parent.is_none()) return new Some({ position: stmt.position, message: `Cannot return from a non-function` });
+                current_scope = current_scope.parent.unwrap();
+                scope.code += `LOD R2 R2\n`;
+            }
+
+            scope.code += `MOV R1 ${value.value.compile()}\n`;
+        } else {
+            while(!current_scope.name.endsWith(".fn")) {
+                if(current_scope.parent.is_none()) return new Some({ position: stmt.position, message: `Cannot return from a non-function` });
+                current_scope = current_scope.parent.unwrap();
+                scope.code += `LOD R2 R2\n`;
+            }
+        }
+
+        scope.code += `RET\n`;
+
+        return new None;
 
     }
 
+    compile_while_stmt(scope: Scope, stmt: AST.WhileStmt): Option<CompilerErr> {
+        if(scope.name == 'start') return new Some({ position: stmt.position, message: `Cannot use a while statement outside of a function` });
+
+        const n_scope = new Scope('while', scope);
+        n_scope.code += `.oxided_while_${++this.state.while_loops}\n`;
+
+        const _scope_reg = this.reg_alloc();
+        if(_scope_reg.is_none()) return new Some({ position: stmt.position, message: `Cannot allocate a register`});
+        const scope_reg = _scope_reg.unwrap();
+
+        n_scope.code += `MOV R${scope_reg} R2\n`;
+        n_scope.code += `ADD R2 R2 ${scope.top}\n`;
+        n_scope.code += `STR R2 R${scope_reg}\n`;
+
+        this.reg_free(scope_reg);
+
+        let current_loop = this.state.while_loops;
+        
+        const _condition = this.compile_expr(n_scope, stmt.condition);
+        if(_condition.is_err()) return _condition.err();
+        let condition = _condition.unwrap();
+
+        if(condition.value.get_value_type() == ValueType.LVALUE) {
+            n_scope.code += `LOD ${condition.value.compile()} ${condition.value.compile()}\n`;
+            condition = this.to_rvalue(condition);
+        }
+
+        n_scope.code += `BRZ .oxided_while_${current_loop}_end ${condition.value.compile()}\n`;
+
+        this.compile_block(n_scope, stmt.body);
+
+        n_scope.code += `LOD R2 R2\n`;
+        n_scope.code += `JMP .oxided_while_${current_loop}\n`;
+        n_scope.code += `.oxided_while_${current_loop}_end\n`;
+        
+        scope.code += n_scope.code;
+        return new None;
+    }
+
     compile_fn_decl(scope: Scope, stmt: AST.FnDecl): Option<CompilerErr> {
+
+        if(scope.name != 'start') return new Some({ position: stmt.position, message: `Functions cannot be inside of a block` });
+
         const parameters: [CompilerType, string][] = [];
         for(let i = 0; i < stmt.parameters.length; i++) {
             const param_name = stmt.parameters[i][1];
@@ -124,7 +191,7 @@ export default class Compiler {
             this.fns.set(stmt.name, { name: stmt.name, parameters, return_type } as FunctionType);
             return new None;
         } else {
-            const n_scope = new Scope(scope);
+            const n_scope = new Scope('fn', scope);
             n_scope.code += `JMP .oxided_${stmt.name}_end\n`;
             n_scope.code += `.oxided_${stmt.name}\n`;
             
@@ -182,7 +249,7 @@ export default class Compiler {
     compile_var_decl(scope: Scope, stmt: AST.VarDecl): Option<CompilerErr> {
         if(scope.var_has(stmt.name)) return new Some({ position: stmt.position, message: `Variable ${stmt.name} already exists`});
         if(stmt.value.is_some()) {
-            const _value = this.compile_expr(scope, stmt.value.unwrap());
+            const _value = this.compile_expr(scope, stmt.value.unwrap(), true);
             if(_value.is_err()) return _value.err();
             const value = _value.unwrap();
             if(value.value.get_value_type() == ValueType.LVALUE) {
@@ -199,7 +266,8 @@ export default class Compiler {
         return new None;
     }
 
-    compile_expr(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
+    compile_expr(scope: Scope, expr: AST.Expr, ignore = false): Result<CompilerValue, CompilerErr> {
+        if(scope.name == 'start' && !ignore) return new Err({ position: expr.position, message: `Cannot use expression statements in the global scope` });
         return this.compile_assignment_expr(scope, expr);
     }
 

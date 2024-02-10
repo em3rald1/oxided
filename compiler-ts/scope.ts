@@ -4,11 +4,13 @@ import { CompilerType } from "./type";
 export default class Scope {
     variables: Map<string, [CompilerType, number]>;
     parent: Option<Scope>;
+    name: string;
     code: string;
     top = 1;
-    constructor(parent?: Scope) {
+    constructor(name: string, parent?: Scope) {
         this.variables = new Map();
         this.parent = parent ? new Some(parent) : new None;
+        this.name = parent?.name ? `${parent.name}.${name}` : name;
         this.code = ""; // TODO: Initialize a scope
     }
 
@@ -34,6 +36,8 @@ export default class Scope {
     }
 
     var_has(name: string): boolean {
-        return this.variables.has(name);
+        if(this.variables.has(name)) return true;
+        else if(this.parent.is_some() && this.parent.unwrap().var_has(name)) return true;
+        else return false;
     }
 }
