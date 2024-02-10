@@ -2,13 +2,13 @@ import * as AST from "../parser-ts/ast";
 import Scope from './scope';
 import { Option, Some, None } from "../util-ts/option";
 import { Result, Ok, Err } from '../util-ts/result';
-import { LiteralValue, Value, RegisterValue, ValueType } from './value';
-import { CompilerType, PointerType, PrimitiveType, ZeroType } from "./type";
+import { LiteralValue, Value, RegisterValue, ValueType, LabelValue } from './value';
+import { CompilerType, PointerType, PrimitiveType, ZeroType, FunctionType } from "./type";
 import _ from "lodash";
 
 type CompilerErr = { position: [number, number], message: string };
 type CompilerValue = { type: CompilerType, value: Value };
-type FunctionType = { name: string, parameters: [CompilerType, string][], return_type: CompilerType };
+//
 
 const OPERATOR_MAP = {
     '+': 'ADD',
@@ -38,6 +38,11 @@ export default class Compiler {
     types: Map<string, CompilerType>;
     fns: Map<string, FunctionType>;
 
+    state: {
+        while_loops: number,
+        if_stmts: number
+    };
+
     registers: boolean[];
     constructor(src: string, ast: AST.Program, registers = 8) {
         this.src = src.split("\n");
@@ -46,10 +51,13 @@ export default class Compiler {
         this.fns = new Map();
         this.registers = new Array(registers).fill(FREE);
 
+        this.state = { while_loops: 0, if_stmts: 0 };
+
         this.types.set('word', new PrimitiveType('word'));
         this.types.set('uword', new PrimitiveType('uword'));
         this.types.set('bool', new PrimitiveType('bool'));
         this.types.set('void', new ZeroType());
+        this.types.set('str', new PointerType(this.types.get('uword')!, 1));
     }
 
     reg_alloc(): Option<number> {
@@ -73,35 +81,102 @@ export default class Compiler {
         for(const stmt of this.ast.body) {
             const _value = this.compile_stmt(scope, stmt);
             if(_value.is_some()) return this.log_error(_value.unwrap());
-            this.reg_free_all();
         }
         return starting_code + scope.code;
     }
 
     compile_stmt(scope: Scope, stmt: AST.Stmt): Option<CompilerErr> {
+
+        this.reg_free_all();
+
         if(stmt instanceof AST.VarDecl) return this.compile_var_decl(scope, stmt);
         else if(stmt instanceof AST.FnDecl) return this.compile_fn_decl(scope, stmt);
+        else if(stmt instanceof AST.WhileStmt) return this.compile_while_stmt(scope, stmt);
         return this.compile_expr(scope, stmt).err();
     }
 
+    compile_while_stmt(scope: Scope, stmt: AST.WhileStmt): Option<CompilerErr> {
+        const n_scope = new Scope(scope);
+        n_scope.code += `.oxided_while_${++this.state.while_loops}\n`;
+        
+        const _condition = this.compile_expr(n_scope, stmt.condition);
+        if(_condition.is_err()) return _condition.err();
+        const condition = _condition.unwrap();
+
+
+    }
+
     compile_fn_decl(scope: Scope, stmt: AST.FnDecl): Option<CompilerErr> {
+        const parameters: [CompilerType, string][] = [];
+        for(let i = 0; i < stmt.parameters.length; i++) {
+            const param_name = stmt.parameters[i][1];
+            const _param_type = this.to_type(stmt.parameters[i][0]);
+            if(_param_type.is_none()) return new Some({ position: stmt.parameters[i][0].position, message: `Type doesn't exist` });
+            const param_type = _param_type.unwrap();
+
+            parameters.push([param_type, param_name]);
+        }
+        const _return_type = this.to_type(stmt.return_type);
+        if(_return_type.is_none()) return new Some({ position: stmt.return_type.position, message: `Type doesn't exist` });
+        const return_type = _return_type.unwrap();
+
         if(stmt.extern) {
-            const parameters: [CompilerType, string][] = [];
-            for(let i = 0; i < stmt.parameters.length; i++) {
-                const param_name = stmt.parameters[i][1];
-                const _param_type = this.to_type(stmt.parameters[i][0]);
-                if(_param_type.is_none()) return new Some({ position: stmt.parameters[i][0].position, message: `Type doesn't exist` });
-                const param_type = _param_type.unwrap();
-
-                parameters.push([param_type, param_name]);
-            }
-            const _return_type = this.to_type(stmt.return_type);
-            if(_return_type.is_none()) return new Some({ position: stmt.return_type.position, message: `Type doesn't exist` });
-            const return_type = _return_type.unwrap();
-
-            this.fns.set(stmt.name, { name: stmt.name, parameters, return_type });
+            this.fns.set(stmt.name, { name: stmt.name, parameters, return_type } as FunctionType);
             return new None;
-        } else return new Some({ position: stmt.position, message: "Non-extern functions are not supported" });
+        } else {
+            const n_scope = new Scope(scope);
+            n_scope.code += `JMP .oxided_${stmt.name}_end\n`;
+            n_scope.code += `.oxided_${stmt.name}\n`;
+            
+            const _return_reg = this.reg_alloc();
+            if(_return_reg.is_none()) return new Some({ position: stmt.position, message: `Cannot allocate a register`});
+            const return_reg = _return_reg.unwrap();
+            const r_parameters = [...parameters].reverse();
+
+            n_scope.code += `MOV R${return_reg} R2\n`;
+            n_scope.code += `ADD R2 R2 ${scope.top}\n`;
+            n_scope.code += `STR R2 R${return_reg}\n`;
+            n_scope.code += `POP R${return_reg}\n`;
+
+            const _param_reg = this.reg_alloc();
+            if(_param_reg.is_none()) return new Some({ position: stmt.position, message: `Cannot allocate a register`});
+            const param_reg = _param_reg.unwrap();
+            for(let i = 0; i < parameters.length; i++) {
+                const param = r_parameters[i];
+                if(param[0].get_size() > 1) return new Some({ position: stmt.position, message: `Cannot use non-primitive or non-pointer types as a parameters`});
+                if(param[0].get_size() == 0) continue;
+                const _offset = n_scope.var_new(param[1], param[0]);
+                if(_offset.is_none()) return new Some({ position: stmt.position, message: `Variable ${param[1]} already exists`});
+                const offset = _offset.unwrap();
+                n_scope.code += `POP R${param_reg}\n`;
+                n_scope.code += `LSTR R2 ${offset} R${param_reg}\n`;
+            }
+            this.reg_free(param_reg);
+            n_scope.code += `PSH R${return_reg}\n`;
+            this.reg_free(return_reg);
+
+            n_scope.code += `// BODY\n`;
+
+            const _err = this.compile_block(n_scope, stmt.body.unwrap());
+            if(_err.is_some()) return _err;
+
+            n_scope.code += `// END OF BODY\n`;
+
+            n_scope.code += `LOD R2 R2\n`;
+            n_scope.code += `RET\n`;
+            n_scope.code += `.oxided_${stmt.name}_end\n`;
+            scope.code += n_scope.code;
+            this.fns.set(stmt.name, { name: stmt.name, parameters, return_type } as FunctionType);
+            return new None;
+        }
+    }
+
+    compile_block(scope: Scope, stmt: AST.Block): Option<CompilerErr> {
+        for(const innerStmt of stmt.body) {
+            const _err = this.compile_stmt(scope, innerStmt);
+            if(_err.is_some()) return _err;
+        }
+        return new None;
     }
 
     compile_var_decl(scope: Scope, stmt: AST.VarDecl): Option<CompilerErr> {
@@ -114,7 +189,7 @@ export default class Compiler {
                 scope.code += `LOD ${value.value.compile()} ${value.value.compile()}\n`;
             }
             const offset = scope.var_new(stmt.name, value.type).unwrap();
-            scope.code += `LSTR R2 -${offset} ${value.value.compile()}\n`;
+            scope.code += `LSTR R2 ${offset} ${value.value.compile()}\n`;
         } else {
             const _type = this.to_type(stmt.value_type.unwrap());
             if(_type.is_none()) return new Some({ position: stmt.value_type.unwrap().position, message: `Couldn't reconstruct a type` });
@@ -125,25 +200,50 @@ export default class Compiler {
     }
 
     compile_expr(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
-        return this.compile_bin_expr(scope, expr);
+        return this.compile_assignment_expr(scope, expr);
+    }
+
+    compile_assignment_expr(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
+        if(expr instanceof AST.AssignExpr) {
+            const _value = this.compile_assignment_expr(scope, expr.value);
+            if(_value.is_err()) return _value;
+            let value = _value.unwrap();
+            if(value.value.get_value_type() == ValueType.LVALUE) {
+                value = this.to_rvalue(value);
+                scope.code += `LOD ${value.value.compile()} ${value.value.compile()}\n`;
+            }
+
+            const _dest = this.compile_boolean_expr(scope, expr.assignee);
+            if(_dest.is_err()) return _dest;
+            const dest = _dest.unwrap();
+
+            scope.code += `STR ${dest.value.compile()} ${value.value.compile()}\n`;
+
+            return new Ok(value);
+        } else return this.compile_boolean_expr(scope, expr);
     }
 
     compile_boolean_expr(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
         if(expr instanceof AST.BinExpr && ['&&', '||'].includes(expr.operator)) {
-            const _left = this.compile_bin_expr(scope, expr.left);
+            const _left = this.compile_expr(scope, expr.left);
             if(_left.is_err()) return _left;
-            const left = _left.unwrap();
+            let left = _left.unwrap();
 
-            const _right = this.compile_bin_expr(scope, expr.right);
+            const _right = this.compile_expr(scope, expr.right);
             if(_right.is_err()) return _right;
-            const right = _right.unwrap();
+            let right = _right.unwrap();
+
+            if(left.value.get_value_type() == ValueType.LVALUE) {
+                left = this.to_rvalue(left);
+                scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
+            }
+            if(right.value.get_value_type() == ValueType.LVALUE) {
+                right = this.to_rvalue(right);
+                scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
+            }
 
             switch(expr.operator) {
                 case '&&': {
-                    if(left.value.get_value_type() == ValueType.LVALUE)
-                        scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
-                    if(right.value.get_value_type() == ValueType.LVALUE) 
-                        scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
                     const _register = this.reg_alloc();
                     if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
                     const register = _register.unwrap();
@@ -151,10 +251,6 @@ export default class Compiler {
                     return new Ok({ type: _.cloneDeep(left.type), value: new RegisterValue(register, ValueType.RVALUE)});
                 }
                 case '||': {
-                    if(left.value.get_value_type() == ValueType.LVALUE)
-                        scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
-                    if(right.value.get_value_type() == ValueType.LVALUE) 
-                        scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
                     const _register = this.reg_alloc();
                     if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
                     const register = _register.unwrap();
@@ -169,15 +265,17 @@ export default class Compiler {
         if(expr instanceof AST.CompExpr) {
             const _left = this.compile_bin_expr(scope, expr.left);
             if(_left.is_err()) return _left;
-            const left = _left.unwrap();
+            let left = _left.unwrap();
             if(left.value.get_value_type() == ValueType.LVALUE) {
+                left = this.to_rvalue(left);
                 scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
             }
 
             const _right = this.compile_bin_expr(scope, expr.right);
             if(_right.is_err()) return _right;
-            const right = _right.unwrap();
+            let right = _right.unwrap();
             if(right.value.get_value_type() == ValueType.LVALUE) {
+                right = this.to_rvalue(right);
                 scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
             }
 
@@ -197,11 +295,20 @@ export default class Compiler {
         if(expr instanceof AST.BinExpr) {
             const _left = this.compile_bin_expr(scope, expr.left);
             if(_left.is_err()) return _left;
-            const left = _left.unwrap();
+            let left = _left.unwrap();
 
             const _right = this.compile_bin_expr(scope, expr.right);
             if(_right.is_err()) return _right;
-            const right = _right.unwrap();
+            let right = _right.unwrap();
+
+            if(left.value.get_value_type() == ValueType.LVALUE) {
+                left = this.to_rvalue(left);
+                scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
+            }
+            if(right.value.get_value_type() == ValueType.LVALUE) {
+                right = this.to_rvalue(right);
+                scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
+            }
 
             switch(expr.operator) {
                 case '>>':
@@ -214,10 +321,6 @@ export default class Compiler {
                 case '/':
                 case '*':
                 case '%': {
-                    if(left.value.get_value_type() == ValueType.LVALUE)
-                        scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
-                    if(right.value.get_value_type() == ValueType.LVALUE) 
-                        scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
                     const _register = this.reg_alloc();
                     if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
                     const register = _register.unwrap();
@@ -225,10 +328,6 @@ export default class Compiler {
                     return new Ok({ type: _.cloneDeep(left.type), value: new RegisterValue(register, ValueType.RVALUE) });
                 }
                 case '&&': {
-                    if(left.value.get_value_type() == ValueType.LVALUE)
-                        scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
-                    if(right.value.get_value_type() == ValueType.LVALUE) 
-                        scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
                     const _register = this.reg_alloc();
                     if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
                     const register = _register.unwrap();
@@ -236,10 +335,6 @@ export default class Compiler {
                     return new Ok({ type: _.cloneDeep(left.type), value: new RegisterValue(register, ValueType.RVALUE)});
                 }
                 case '||': {
-                    if(left.value.get_value_type() == ValueType.LVALUE)
-                        scope.code += `LOD ${left.value.compile()} ${left.value.compile()}\n`;
-                    if(right.value.get_value_type() == ValueType.LVALUE) 
-                        scope.code += `LOD ${right.value.compile()} ${right.value.compile()}\n`;
                     const _register = this.reg_alloc();
                     if(_register.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
                     const register = _register.unwrap();
@@ -267,10 +362,13 @@ export default class Compiler {
         if(expr instanceof AST.UnaryExpr) {
             const _operand = this.compile_call_expr(scope, expr.operand);
             if(_operand.is_err()) return _operand;
-            const operand = _operand.unwrap();
+            let operand = _operand.unwrap();
             switch(expr.operator) {
                 case '-': {
-                    if(operand.value.get_value_type() == ValueType.LVALUE) scope.code += `LOD ${operand.value.compile()} ${operand.value.compile()}\n`;
+                    if(operand.value.get_value_type() == ValueType.LVALUE) {
+                        operand = this.to_rvalue(operand);
+                        scope.code += `LOD ${operand.value.compile()} ${operand.value.compile()}\n`;
+                    }
                     const _register = this.reg_alloc();
                     if(_register.is_none()) return new Err({ position: expr.position, message: `Compiler Error: Couldn't allocate a register`});
                     const register = _register.unwrap();
@@ -278,7 +376,10 @@ export default class Compiler {
                     return new Ok({ type: _.cloneDeep(operand.type), value: new RegisterValue(register, ValueType.RVALUE) });
                 }
                 case '*': {
-                    if(operand.value.get_value_type() == ValueType.LVALUE) scope.code += `LOD ${operand.value.compile()} ${operand.value.compile()}\n`;
+                    if(operand.value.get_value_type() == ValueType.LVALUE) {
+                        operand = this.to_rvalue(operand);
+                        scope.code += `LOD ${operand.value.compile()} ${operand.value.compile()}\n`;
+                    }
                     let n_type = _.cloneDeep(operand.type);
                     if(!(n_type instanceof PointerType)) return new Err({ position: expr.operand.position, message: `Compiler Error: UNARYEXPR` });
                     n_type.pointers -= 1;
@@ -297,7 +398,10 @@ export default class Compiler {
                     return new Ok({ type: n_type, value });
                 }
                 case '!': {
-                    if(operand.value.get_value_type() == ValueType.LVALUE) scope.code += `LOD ${operand.value.compile()} ${operand.value.compile()}\n`;
+                    if(operand.value.get_value_type() == ValueType.LVALUE) {
+                        operand = this.to_rvalue(operand);
+                        scope.code += `LOD ${operand.value.compile()} ${operand.value.compile()}\n`;
+                    }
                     const _register = this.reg_alloc();
                     if(_register.is_none()) return new Err({ position: expr.position, message: `Compiler Error: Couldn't allocate a register`});
                     const register = _register.unwrap();
@@ -320,16 +424,16 @@ export default class Compiler {
             const fn = this.fns.get(callee)!;
             if(expr.args.length != fn.parameters.length) return new Err({ position: expr.position, message: `Function ${callee} accepts ${fn.parameters.length}, got ${expr.args.length}` });
             for(let i = 0; i < fn.parameters.length; i++) {
-                const param = fn.parameters[i];
                 const _arg = this.compile_expr(scope, expr.args[i]);
                 if(_arg.is_err()) return _arg;
-                const arg = _arg.unwrap();
+                let arg = _arg.unwrap();
                 if(arg.value.get_value_type() == ValueType.LVALUE) {
+                    arg = this.to_rvalue(arg);
                     scope.code += `LOD ${arg.value.compile()} ${arg.value.compile()}\n`;
                 }
                 scope.code += `PSH ${arg.value.compile()}\n`;
             }
-            scope.code += `CAL .${callee}\n`;
+            scope.code += `CAL .oxided_${callee}\n`;
             return new Ok({ type: _.cloneDeep(fn.return_type), value: new RegisterValue(1, ValueType.RVALUE) });
         } else return this.compile_member_expr(scope, expr);
     }
@@ -338,16 +442,18 @@ export default class Compiler {
         if(expr instanceof AST.MemberExpr) {
             const _object = this.compile_literal(scope, expr.object);
             if(_object.is_err()) return _object;
-            const object = _object.unwrap();
+            let object = _object.unwrap();
             if(expr.computed) {
                 if(object.value.get_value_type() == ValueType.LVALUE) {
+                    object = this.to_rvalue(object);
                     scope.code += `LOD ${object.value.compile()} ${object.value.compile()}\n`;
                 }
                 if(typeof expr.property == 'string') return new Err({ position: expr.position, message: `Compiler error: MEMBEREXPR1` });
                 const _property = this.compile_expr(scope, expr.property);
                 if(_property.is_err()) return _property;
-                const property = _property.unwrap();
+                let property = _property.unwrap();
                 if(property.value.get_value_type() == ValueType.LVALUE) {
+                    property = this.to_rvalue(property);
                     scope.code += `LOD ${property.value.compile()} ${property.value.compile()}\n`;
                 }
                 const _register = this.reg_alloc();
@@ -378,16 +484,20 @@ export default class Compiler {
                     return new Ok({ type: this.types.get("bool")!, value: new LiteralValue(expr.value == 'true' ? 1 : 0) });
                 }
                 case 'identifier': {
+                    if(this.fns.has(expr.value)) return new Ok({ type: this.fns.get(expr.value)!, value: new LabelValue(`oxided_${expr.value}`)});                   
                     if(!scope.var_has(expr.value)) return new Err({ position: expr.position, message: `Variable ${expr.value} doesn't exist` });
                     
                     const [[type, offset], depth] = scope.var_get(expr.value).unwrap();
-                    if(depth > 0) return new Err({ position: expr.position, message: `WIP OUTER IDENT LOGIC` });
-                    
+                     
                     const _register = this.reg_alloc();
                     if(_register.is_none()) return new Err({ position: expr.position, message: `No register left for allocation` });
                     const reg = _register.unwrap();
+
+                    for(let i = 0; i < depth; i++) {
+                        scope.code += `LOD R${reg} ${i == 0 ? 'R2' : `R${reg}`}\n`;
+                    }
                     
-                    scope.code += `SUB R${reg} R2 ${offset}\n`;
+                    scope.code += `ADD R${reg} R2 ${offset}\n`;
                     
                     return new Ok({ type, value: new RegisterValue(reg, ValueType.LVALUE) });
                 }
@@ -404,6 +514,14 @@ export default class Compiler {
         }
         return new Some(type);
     }
+
+    to_rvalue(value: CompilerValue): CompilerValue {
+        if(value.value.get_value_type() == ValueType.LVALUE) {
+            (value.value as RegisterValue).value_type = ValueType.RVALUE;
+        }
+        return value;
+    }
+
     log_error(error: CompilerErr): void {
         console.log(error);
         const line = error.position[1];

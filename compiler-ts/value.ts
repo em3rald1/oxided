@@ -47,3 +47,14 @@ export class LiteralValue implements Value {
         return `${this.value}`;
     }
 }
+
+export class LabelValue implements Value {
+    label: string;
+    constructor(label: string) {
+        this.label = label;
+    }
+    get_value_type(): ValueType { return ValueType.RVALUE; }
+    compile() {
+        return `.${this.label}`;
+    }
+}

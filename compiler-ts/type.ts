@@ -42,7 +42,7 @@ export class PointerType<T extends CompilerType> implements CompilerType {
     get_size() { return 1; }
 }
 
-export class FunctionType {
+export class FunctionType implements CompilerType {
     name: string;
     parameters: [CompilerType, string][];
     return_type: CompilerType;
@@ -50,5 +50,13 @@ export class FunctionType {
         this.name = name;
         this.parameters = parameters;
         this.return_type = return_type;
+    }
+
+    public get_name() {
+        return this.name;
+    }
+
+    public get_size() {
+        return 0;
     }
 }

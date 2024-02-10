@@ -160,6 +160,10 @@ export default class Typechecker {
         this.fns.set(stmt.name, fn_type);
         if(stmt.extern) return new Ok(undefined);
         const nscope = new Scope(scope, fn_type);
+        for(const param of params) {
+            const _v = nscope.var_new(param[1], param[0]);
+            if(_v.is_some()) return new Err([stmt.position, _v.unwrap()]);
+        }
         return this.validate_block(nscope, stmt.body.unwrap());
     }
 
@@ -323,7 +327,7 @@ export default class Typechecker {
                 if(_arg.is_err()) return _arg;
                 const arg = _arg.unwrap();
 
-                if(!_.isEqual(arg.get_type(), callee_type.get_params()[i])) return new Err([expr.args[i].position, `Argument ${i + 1} invalid in a function call`]);
+                if(!_.isEqual(arg.get_type(), callee_type.get_params()[i][0])) return new Err([expr.args[i].position, `Argument ${i + 1} invalid in a function call`]);
             }
             return new Ok(new RValue(callee_type.return_type));
         } else return this.validate_member_expr(scope, expr);
