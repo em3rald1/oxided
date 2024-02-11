@@ -191,6 +191,7 @@ export default class Compiler {
             this.fns.set(stmt.name, { name: stmt.name, parameters, return_type } as FunctionType);
             return new None;
         } else {
+            this.fns.set(stmt.name, { name: stmt.name, parameters, return_type } as FunctionType);
             const n_scope = new Scope('fn', scope);
             n_scope.code += `JMP .oxided_${stmt.name}_end\n`;
             n_scope.code += `.oxided_${stmt.name}\n`;
@@ -233,7 +234,7 @@ export default class Compiler {
             n_scope.code += `RET\n`;
             n_scope.code += `.oxided_${stmt.name}_end\n`;
             scope.code += n_scope.code;
-            this.fns.set(stmt.name, { name: stmt.name, parameters, return_type } as FunctionType);
+            
             return new None;
         }
     }
@@ -285,9 +286,20 @@ export default class Compiler {
             if(_dest.is_err()) return _dest;
             const dest = _dest.unwrap();
 
-            scope.code += `STR ${dest.value.compile()} ${value.value.compile()}\n`;
+            let set_value = value;
 
-            return new Ok(value);
+            if(expr.operator != '=') {
+                const _op_reg = this.reg_alloc();
+                if(_op_reg.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
+                const op_reg = _op_reg.unwrap();
+                scope.code += `LOD R${op_reg} ${dest.value.compile()}\n`;
+                scope.code += `${OPERATOR_MAP[expr.operator.slice(0, -1)]} R${op_reg} ${value.value.compile()}\n`;
+                set_value = { value: new RegisterValue(op_reg, ValueType.RVALUE), type: value.type };
+            }
+
+            scope.code += `STR ${dest.value.compile()} ${set_value.value.compile()}\n`;
+
+            return new Ok(set_value);
         } else return this.compile_boolean_expr(scope, expr);
     }
 
@@ -485,6 +497,13 @@ export default class Compiler {
 
     compile_call_expr(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
         if(expr instanceof AST.CallExpr) {
+            const used_registers = [...this.registers];
+            for(let i = 0; i < used_registers.length; i++) {
+                if(used_registers[i] == USED) {
+                    scope.code += `PSH R${i + 3}\n`;
+                    this.registers[i] = FREE;
+                }
+            }
             if(!(expr.callee instanceof AST.LitExpr)) return new Err({ position: expr.position, message: `Callee cannot be a non-string value` });
             if(expr.callee.value_type != 'identifier') return new Err({ position: expr.position, message: `Callee cannot be a non-string value` });
             const callee = expr.callee.value;
@@ -502,6 +521,12 @@ export default class Compiler {
                 scope.code += `PSH ${arg.value.compile()}\n`;
             }
             scope.code += `CAL .oxided_${callee}\n`;
+            for(let i = used_registers.length - 1; i >= 0; i--) {
+                if(used_registers[i] == USED) {
+                    scope.code += `POP R${i + 3}\n`;
+                    this.registers[i] = USED;
+                }
+            }
             return new Ok({ type: _.cloneDeep(fn.return_type), value: new RegisterValue(1, ValueType.RVALUE) });
         } else return this.compile_member_expr(scope, expr);
     }
