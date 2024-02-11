@@ -5,9 +5,6 @@ import yargs from "yargs/yargs";
 import { hideBin } from "yargs/helpers";
 import { readFileSync, writeFileSync } from "fs";
 import Typechecker from "./typechecker-ts/typechecker";
-import { FnDecl } from "./parser-ts/ast";
-import util from "util";
-util.inspect.defaultOptions.depth = null;
 
 function main() {
     const argv = yargs(hideBin(process.argv))
@@ -20,9 +17,6 @@ function main() {
     const tokens = tokenize(src);
     const parser = new Parser(src, tokens);
     const ast = parser.parse();
-
-    console.log((ast.body[0] as FnDecl).body.unwrap());
-
     const typechecker = new Typechecker(src, ast);
     const tc_error = typechecker.validate();
     if(tc_error.is_some()) return;

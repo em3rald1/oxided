@@ -100,7 +100,8 @@ export default class Typechecker {
         } else {
             if(scope.cf_get().is_some()) {
                 const fn_type = scope.cf_get().unwrap();
-                if(!_.isEqual(fn_type, this.types.get("void")!)) return new Err([stmt.position, `Cannot return no value from a function with a non-void return type`]);
+
+                if(!_.isEqual(fn_type.return_type, this.types.get("void")!)) return new Err([stmt.position, `Cannot return no value from a function with a non-void return type`]);
             } else return new Err([stmt.position, `Cannot return outside of the function`]);
         }
         return new Ok(undefined);
@@ -253,6 +254,9 @@ export default class Typechecker {
                     }
                     return new Ok(new RValue(left_type));
                 }
+                case '&':
+                case '|':
+                case '^':
                 case '*':
                 case '/':
                 case '%': {

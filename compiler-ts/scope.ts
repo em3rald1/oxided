@@ -7,11 +7,13 @@ export default class Scope {
     name: string;
     code: string;
     top = 1;
-    constructor(name: string, parent?: Scope) {
+    value: Option<string>;
+    constructor(name: string, parent?: Scope, value?: string) {
         this.variables = new Map();
         this.parent = parent ? new Some(parent) : new None;
         this.name = parent?.name ? `${parent.name}.${name}` : name;
         this.code = ""; // TODO: Initialize a scope
+        this.value = value ? new Some(value) : new None;
     }
 
     var_get(name: string): Option<[[CompilerType, number], number]> {

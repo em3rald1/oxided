@@ -94,7 +94,66 @@ export default class Compiler {
         else if(stmt instanceof AST.FnDecl) return this.compile_fn_decl(scope, stmt);
         else if(stmt instanceof AST.WhileStmt) return this.compile_while_stmt(scope, stmt);
         else if(stmt instanceof AST.ReturnStmt) return this.compile_return_stmt(scope, stmt);
+        else if(stmt instanceof AST.IfStmt) return this.compile_if_stmt(scope, stmt);
+        else if(stmt instanceof AST.BreakStmt) return this.compile_break_stmt(scope, stmt);
         return this.compile_expr(scope, stmt).err();
+    }
+
+    compile_break_stmt(scope: Scope, stmt: AST.BreakStmt): Option<CompilerErr> {
+        if(scope.name == 'start') return new Some({ position: stmt.position, message: `Cannot use break statement in a global scope` });
+
+        let current_scope = scope;
+
+        while(!current_scope.name.endsWith('.while')) {
+            if(current_scope.name == 'start') return new Some({ position: stmt.position, message: `Cannot use break statement outside of while statement` });
+            current_scope = current_scope.parent.unwrap();
+        }
+
+        scope.code += `JMP .oxided_while_${current_scope.value.unwrap()}_end\n`;
+    }
+
+    compile_if_stmt(scope: Scope, stmt: AST.IfStmt): Option<CompilerErr> {
+        if(scope.name == 'start') return new Some({ position: stmt.position, message: `Cannot use conditional logic in a global scope` });
+
+        const _condition = this.compile_expr(scope, stmt.condition);
+        if(_condition.is_err()) return _condition.err();
+        const condition = _condition.unwrap();
+
+        const current_if = ++this.state.if_stmts;
+
+        if(stmt.elsebody.is_some()) {
+            scope.code += `BRZ .oxided_if_${current_if}_else ${condition.value.compile()}\n`;
+
+            const n_scope = new Scope('if', scope);
+            const _err = this.compile_block(n_scope, stmt.body);
+            if(_err.is_some()) return _err;
+            scope.code += n_scope.code;
+
+            scope.code += `JMP .oxided_if_${current_if}_end\n`;
+            scope.code += `.oxided_if_${current_if}_else\n`;
+
+            const elsebody = stmt.elsebody.unwrap();
+            if(elsebody instanceof AST.Block) {
+                const else_block = new Scope('else', scope);
+                const _err = this.compile_block(else_block, elsebody);
+                if(_err.is_some()) return _err;
+            } else {
+                const _err = this.compile_if_stmt(scope, elsebody);
+                if(_err.is_some()) return _err;
+            }
+            scope.code += `.oxided_if_${current_if}_end\n`;
+        } else {
+            scope.code += `BRZ .oxided_if_${current_if}_end ${condition.value.compile()}\n`;
+
+            const n_scope = new Scope('if', scope);
+            const _err = this.compile_block(n_scope, stmt.body);
+            if(_err.is_some()) return _err;
+            scope.code += n_scope.code;
+            scope.code += `.oxided_if_${current_if}_end\n`;
+            
+        }
+
+        return new None;
     }
 
     compile_return_stmt(scope: Scope, stmt: AST.ReturnStmt): Option<CompilerErr> {
@@ -113,7 +172,8 @@ export default class Compiler {
             while(!current_scope.name.endsWith(".fn")) {
                 if(current_scope.parent.is_none()) return new Some({ position: stmt.position, message: `Cannot return from a non-function` });
                 current_scope = current_scope.parent.unwrap();
-                scope.code += `LOD R2 R2\n`;
+                if(current_scope.name.endsWith(".while"))
+                    scope.code += `LOD R2 R2\n`;
             }
 
             scope.code += `MOV R1 ${value.value.compile()}\n`;
@@ -134,8 +194,8 @@ export default class Compiler {
     compile_while_stmt(scope: Scope, stmt: AST.WhileStmt): Option<CompilerErr> {
         if(scope.name == 'start') return new Some({ position: stmt.position, message: `Cannot use a while statement outside of a function` });
 
-        const n_scope = new Scope('while', scope);
-        n_scope.code += `.oxided_while_${++this.state.while_loops}\n`;
+        const n_scope = new Scope('while', scope, (++this.state.while_loops).toString());
+        n_scope.code += `.oxided_while_${this.state.while_loops}\n`;
 
         const _scope_reg = this.reg_alloc();
         if(_scope_reg.is_none()) return new Some({ position: stmt.position, message: `Cannot allocate a register`});
@@ -165,6 +225,7 @@ export default class Compiler {
         n_scope.code += `LOD R2 R2\n`;
         n_scope.code += `JMP .oxided_while_${current_loop}\n`;
         n_scope.code += `.oxided_while_${current_loop}_end\n`;
+        n_scope.code += `LOD R2 R2\n`;
         
         scope.code += n_scope.code;
         return new None;
@@ -199,12 +260,10 @@ export default class Compiler {
             const _return_reg = this.reg_alloc();
             if(_return_reg.is_none()) return new Some({ position: stmt.position, message: `Cannot allocate a register`});
             const return_reg = _return_reg.unwrap();
-            const r_parameters = [...parameters].reverse();
 
-            n_scope.code += `MOV R${return_reg} R2\n`;
-            n_scope.code += `ADD R2 R2 ${scope.top}\n`;
-            n_scope.code += `STR R2 R${return_reg}\n`;
             n_scope.code += `POP R${return_reg}\n`;
+
+            const r_parameters = [...parameters].reverse();
 
             const _param_reg = this.reg_alloc();
             if(_param_reg.is_none()) return new Some({ position: stmt.position, message: `Cannot allocate a register`});
@@ -230,7 +289,7 @@ export default class Compiler {
 
             n_scope.code += `// END OF BODY\n`;
 
-            n_scope.code += `LOD R2 R2\n`;
+           // n_scope.code += `.oxided_${stmt.name}_return\n`;
             n_scope.code += `RET\n`;
             n_scope.code += `.oxided_${stmt.name}_end\n`;
             scope.code += n_scope.code;
@@ -293,7 +352,7 @@ export default class Compiler {
                 if(_op_reg.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
                 const op_reg = _op_reg.unwrap();
                 scope.code += `LOD R${op_reg} ${dest.value.compile()}\n`;
-                scope.code += `${OPERATOR_MAP[expr.operator.slice(0, -1)]} R${op_reg} ${value.value.compile()}\n`;
+                scope.code += `${OPERATOR_MAP[expr.operator.slice(0, -1)]} R${op_reg} R${op_reg} ${value.value.compile()}\n`;
                 set_value = { value: new RegisterValue(op_reg, ValueType.RVALUE), type: value.type };
             }
 
@@ -498,6 +557,8 @@ export default class Compiler {
     compile_call_expr(scope: Scope, expr: AST.Expr): Result<CompilerValue, CompilerErr> {
         if(expr instanceof AST.CallExpr) {
             const used_registers = [...this.registers];
+
+
             for(let i = 0; i < used_registers.length; i++) {
                 if(used_registers[i] == USED) {
                     scope.code += `PSH R${i + 3}\n`;
@@ -520,6 +581,9 @@ export default class Compiler {
                 }
                 scope.code += `PSH ${arg.value.compile()}\n`;
             }
+            scope.code += `MOV R1 R2\n`;
+            scope.code += `ADD R2 R2 ${scope.top}\n`;
+            scope.code += `STR R2 R1\n`;
             scope.code += `CAL .oxided_${callee}\n`;
             for(let i = used_registers.length - 1; i >= 0; i--) {
                 if(used_registers[i] == USED) {
@@ -527,7 +591,16 @@ export default class Compiler {
                     this.registers[i] = USED;
                 }
             }
-            return new Ok({ type: _.cloneDeep(fn.return_type), value: new RegisterValue(1, ValueType.RVALUE) });
+
+            scope.code += `LOD R2 R2\n`;
+
+            const _result_reg = this.reg_alloc();
+            if(_result_reg.is_none()) return new Err({ position: expr.position, message: `Cannot allocate a register` });
+            const result_reg = _result_reg.unwrap();
+
+            scope.code += `MOV R${result_reg} R1\n`;
+
+            return new Ok({ type: _.cloneDeep(fn.return_type), value: new RegisterValue(result_reg, ValueType.RVALUE) });
         } else return this.compile_member_expr(scope, expr);
     }
 
@@ -585,18 +658,32 @@ export default class Compiler {
                     const _register = this.reg_alloc();
                     if(_register.is_none()) return new Err({ position: expr.position, message: `No register left for allocation` });
                     const reg = _register.unwrap();
+                    
+                    if(depth > 0) {
+                        let current_scope = scope;
 
-                    for(let i = 0; i < depth; i++) {
-                        scope.code += `LOD R${reg} ${i == 0 ? 'R2' : `R${reg}`}\n`;
+                        let is_r2_used = false;
+                        for(let i = 0; i < depth; i++) {
+                            if(current_scope.name.endsWith('.while')) {
+                                scope.code += `LOD R${reg} ${!is_r2_used ? 'R2' : `R${reg}`}\n`;
+                                is_r2_used = true;
+                            }
+                            current_scope = current_scope.parent.unwrap();
+                        }
+                        
+                        scope.code += `ADD R${reg} R${!is_r2_used ? 2 : reg} ${offset}\n`;
+                    } else {
+                        scope.code += `ADD R${reg} R2 ${offset}\n`;
                     }
-                    
-                    scope.code += `ADD R${reg} R2 ${offset}\n`;
-                    
                     return new Ok({ type, value: new RegisterValue(reg, ValueType.LVALUE) });
                 }
                 default: return new Err({ position: expr.position, message: `COMPILERERR: LITERALTYPE` });
             }
-        } else return new Err({ position: expr.position, message: `COMPILERERR: LITERAL` });
+        } else if(expr instanceof AST.ParenBlock) {
+            return this.compile_expr(scope, expr.value);
+        } else {
+            return new Err({ position: expr.position, message: `COMPILERERR: LITERAL` });
+        }
     }
 
     to_type(expr: AST.TypeExpr): Option<CompilerType> {
