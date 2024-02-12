@@ -15,6 +15,30 @@ fn main(argc word, argv *str) word { # a function with a word return type (URCL 
 }
 ```
 
+## Usage
+
+Firstly, clone the repository and install the dependencies:
+
+```sh
+$ git clone https://github.com/em3rald1/oxided
+$ cd oxided
+$ npm i
+```
+
+Next, write some code:
+
+```
+fn main() void {
+    let x = 5;
+}
+```
+
+And compile it:
+
+```sh
+$ ts-node index.ts --file "<your file>" --outfile "<output file>" --regs <amount of registers, default is 8>
+```
+
 ## 📜 Goals in the near future for this project
 
 - Full compiler support
