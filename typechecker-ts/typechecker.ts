@@ -124,6 +124,7 @@ export default class Typechecker {
             if(_type.is_err()) return _type.into();
             type = _type.unwrap();
             if(stmt.value.is_some()) {
+                if(type instanceof StructType) return new Err([stmt.value_type.unwrap().position, `Cannot assign a value to the variable with a struct type`]);
                 const _value = this.validate_expr(scope, stmt.value.unwrap());
                 if(_value.is_err()) return _value.into();
                 const value = _value.unwrap();

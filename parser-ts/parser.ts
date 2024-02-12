@@ -283,6 +283,7 @@ export default class Parser {
         const type = _type.unwrap();
 
         if(this.at().is_some() && this.at().unwrap().type == TokenType.SEMICOLON) {
+            this.eat();
             return new Ok(new AST.VarDecl(name.value, name.position, undefined, type));
         }
         const _eq = this.expect_value('=', `Expected an equals sign after a type in a variable declaration`);
