@@ -398,7 +398,7 @@ export default class Parser {
 
     parse_bin_expr_b_xor(): Result<AST.Expr, ParserError> {
         const _left = this.parse_bin_expr_b_and();
-        if(_left.is_err()) return _left;
+        if (_left.is_err()) return _left;
 
         let left = _left.unwrap();
 
