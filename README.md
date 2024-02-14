@@ -4,6 +4,10 @@ Oxided is a programming with its main target being [URCL](https://github.com/Mod
 > [!CAUTION]
 > This project is in very stages of development. Not all the features are working properly at this point in time. And if they do work, they are most likely not optimized
 
+> [!CAUTION]
+> This project is written in full typescript with Rust's Option<\T> and Result<\T, E> types
+> If you want to contribute, do not until the project is rewritten in Rust 
+
 ## 📖 Syntax example
 Simple hello world:
 ```
