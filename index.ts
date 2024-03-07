@@ -19,10 +19,10 @@ function main() {
     const ast = parser.parse();
     const typechecker = new Typechecker(src, ast);
     const tc_error = typechecker.validate();
-    if(tc_error.is_some()) return;
+    if (tc_error.is_some()) return;
     const compiler = new Compiler(src, ast, argv.regs);
     const code = compiler.compile();
-    if(!code) return;
+    if (!code) return;
     writeFileSync(argv.outfile, code);
 }
 

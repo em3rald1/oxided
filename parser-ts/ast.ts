@@ -1,8 +1,9 @@
 import { None, Option, Some } from '../util-ts/option';
 export enum StmtType {
-    Program, StructDecl, IfStmt, BreakStmt, ReturnStmt, 
+    Program, StructDecl, IfStmt, BreakStmt, ReturnStmt,
+    ImportStmt,
     WhileStmt, FnDecl, VarDecl, Block,
-    Expr, AssignExpr, CompExpr, BinExpr, CastExpr, 
+    Expr, AssignExpr, CompExpr, BinExpr, CastExpr,
     UnaryExpr, CallExpr, MemberExpr, ParenBlock, LitExpr
 };
 
@@ -15,12 +16,31 @@ export interface Stmt {
 export class Program implements Stmt {
     body: Stmt[];
     type = StmtType.Program;
-    position: [number, number] = [0, 0]; 
+    position: [number, number] = [0, 0];
     constructor(body: Stmt[]) {
         this.body = body;
     }
     toString(): string {
         return `[Program: body = [... ${this.body.length} elements] ]`;
+    }
+}
+
+export class ImportStmt implements Stmt {
+    type = StmtType.ImportStmt;
+    position: [number, number];
+    is_all: boolean;
+    alias: Option<string>;
+    file: string;
+    imports: Option<string[]>;
+    constructor(file: string, is_all: boolean, position: [number, number], alias?: string, imports?: string[]) {
+        this.position = position;
+        this.is_all = is_all;
+        this.alias = alias ? new Some(alias) : new None;
+        this.file = file;
+        this.imports = imports ? new Some(imports) : new None;
+    }
+    toString(): string {
+        return `[ImportStmt: file = ${this.file}]`;
     }
 }
 
@@ -54,7 +74,7 @@ export class IfStmt implements Stmt {
         this.position = position;
     }
     toString(): string {
-        if(this.elsebody.is_some()) {
+        if (this.elsebody.is_some()) {
             const elsebody = this.elsebody.unwrap();
             return `[IfStmt: condition = ${this.condition.toString()}, body = ${this.body.toString()}, else body = ${elsebody.toString()}]`;
         }
@@ -82,7 +102,7 @@ export class ReturnStmt implements Stmt {
         this.value = value ? new Some(value) : new None;
         this.position = position;
     }
-    
+
     toString(): string {
         return this.value ? `[ReturnStmt: value = ${this.value.toString()}]` : `[ReturnStmt]`;
     }
@@ -98,7 +118,7 @@ export class WhileStmt implements Stmt {
         this.body = body;
         this.position = position;
     }
-    
+
     toString(): string {
         return `[WhileStmt: condition: ${this.condition.toString()}, body: ${this.body.toString()}]`;
     }

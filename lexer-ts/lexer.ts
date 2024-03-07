@@ -1,7 +1,7 @@
 import Token, { TokenType } from "./token";
 
-const KEYWORDS = ['fn', 'let', 'return', 'if', 'else', 'while', 'struct', 'as', 'break', 'ext'];
-const BREAK_CHAR = " \t\r\n()<>{}[]:;.,=!'+-/%*&|^";
+const KEYWORDS = ['fn', 'let', 'return', 'if', 'else', 'while', 'struct', 'as', 'break', 'ext', 'import', 'asm', 'from'];
+const BREAK_CHAR = " \t\r\n()<>{}[]:;.,=!'+-/%*&|^\"";
 const NUMBER_REGEX = /^((0x[\dA-Fa-f]*)|(\d+)|(0b[01]*))$/gmi;
 
 export default function tokenize(src: string) {
@@ -9,10 +9,10 @@ export default function tokenize(src: string) {
     let column = 1;
     let row = 1;
 
-    for(let cindex = 0; cindex < src.length; cindex++) {
+    for (let cindex = 0; cindex < src.length; cindex++) {
         const current_char = src[cindex];
 
-        switch(current_char) {
+        switch (current_char) {
             case ' ':
             case '\t':
             case '\r':
@@ -63,7 +63,7 @@ export default function tokenize(src: string) {
                 break;
             case '>':
             case '<':
-                if(src[cindex + 1] == '=') {
+                if (src[cindex + 1] == '=') {
                     tokens.push(
                         new Token(TokenType.COMPARISON, current_char + '=', [column, row])
                     );
@@ -71,8 +71,8 @@ export default function tokenize(src: string) {
                     column += 1;
                     break;
                 }
-                if(src[cindex + 1] == current_char) {
-                    if(src[cindex + 2] == '=') {
+                if (src[cindex + 1] == current_char) {
+                    if (src[cindex + 2] == '=') {
                         tokens.push(
                             new Token(TokenType.ASSIGNMENT, current_char.repeat(2) + '=', [column, row])
                         );
@@ -93,13 +93,13 @@ export default function tokenize(src: string) {
                 break;
             case '&':
             case '|':
-                if(src[cindex + 1] == '=') {
+                if (src[cindex + 1] == '=') {
                     tokens.push(new Token(TokenType.ASSIGNMENT, current_char + '=', [column, row]));
                     cindex += 1;
                     column += 1;
                     break;
                 }
-                if(src[cindex + 1] == current_char) {
+                if (src[cindex + 1] == current_char) {
                     tokens.push(new Token(TokenType.BINARY, current_char.repeat(2), [column, row]));
                     cindex += 1;
                     column += 1;
@@ -108,7 +108,7 @@ export default function tokenize(src: string) {
                 tokens.push(new Token(TokenType.BINARY, current_char, [column, row]));
                 break;
             case '^':
-                if(src[cindex + 1] == '=') {
+                if (src[cindex + 1] == '=') {
                     tokens.push(new Token(TokenType.ASSIGNMENT, current_char + '=', [column, row]));
                     cindex += 1;
                     column += 1;
@@ -117,7 +117,7 @@ export default function tokenize(src: string) {
                 tokens.push(new Token(TokenType.BINARY, current_char, [column, row]));
                 break;
             case '=':
-                if(src[cindex + 1] == current_char) {
+                if (src[cindex + 1] == current_char) {
                     tokens.push(
                         new Token(TokenType.COMPARISON, current_char.repeat(2), [column, row])
                     );
@@ -130,7 +130,7 @@ export default function tokenize(src: string) {
                 );
                 break;
             case '!':
-                if(src[cindex + 1] == '=') {
+                if (src[cindex + 1] == '=') {
                     tokens.push(
                         new Token(TokenType.COMPARISON, current_char + '=', [column, row])
                     );
@@ -152,14 +152,14 @@ export default function tokenize(src: string) {
             case '/':
             case '*':
             case '%':
-                if(src[cindex + 1] == '=') {
+                if (src[cindex + 1] == '=') {
                     tokens.push(new Token(TokenType.ASSIGNMENT, current_char + '=', [column, row]));
                     cindex += 1;
                     column += 1;
                     break;
                 }
                 tokens.push(new Token(TokenType.BINARY, current_char, [column, row]));
-                break;  
+                break;
             case ':':
                 tokens.push(
                     new Token(TokenType.COLON, current_char, [column, row])
@@ -170,12 +170,24 @@ export default function tokenize(src: string) {
                     new Token(TokenType.SEMICOLON, current_char, [column, row])
                 );
                 break;
+            case '"': {
+                let output: string = "";
+                let start = column;
+                let char = src[++cindex];
+                while (char != '"') {
+                    output += char;
+                    char = src[++cindex];
+                    column += 1;
+                }
+                tokens.push(new Token(TokenType.STRING, output, [start, row]));
+                break;
+            }
             default: {
                 let output: string = current_char;
                 let start = column;
-                if(/\d/.test(current_char)) {
+                if (/\d/.test(current_char)) {
                     let _char = src[cindex + 1];
-                    while(NUMBER_REGEX.test(output + _char)) {
+                    while (NUMBER_REGEX.test(output + _char)) {
                         output += _char;
                         cindex += 1;
                         column += 1;
@@ -187,15 +199,15 @@ export default function tokenize(src: string) {
                     break;
                 } else {
                     let _char = src[cindex + 1];
-                    while(!BREAK_CHAR.includes(_char) && _char) {
+                    while (!BREAK_CHAR.includes(_char) && _char) {
                         output += _char;
                         cindex += 1;
                         column += 1;
                         _char = src[cindex + 1];
                     }
                     const type = KEYWORDS.includes(output) ? TokenType.KEYWORD :
-                                 ['true', 'false'].includes(output) ? TokenType.BOOL :
-                                 TokenType.IDENTIFIER;
+                        ['true', 'false'].includes(output) ? TokenType.BOOL :
+                            TokenType.IDENTIFIER;
                     tokens.push(
                         new Token(type, output, [start, row])
                     );
